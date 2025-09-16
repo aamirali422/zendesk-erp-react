@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import Sidebar from "../components/Sidebar";
 import AnalyticsCards from "../components/AnalyticsCards";
-import TicketsList from "../components/TicketsList";
+import TicketsList from "../components/TicketList";
 
 
 import TicketDetail from "../components/TicketDetail";
