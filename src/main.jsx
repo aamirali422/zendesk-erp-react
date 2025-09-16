@@ -1,26 +1,19 @@
-// main.jsx
+// src/main.jsx
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import App from "./App";
-import LoginPage from "./pages/Login";
+import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import "./index.css"; // ✅ Import your CSS here
+import { AuthProvider } from "./contexts/AuthContext";
+import ProtectedRoute from "./components/ProtectedRoute";
+import "./index.css";
 
-// Protected route component
-function ProtectedRoute({ children }) {
-  const { isLoggedIn } = useAuth();
-  return isLoggedIn ? children : <Navigate to="/Login" />;
-}
-
-// Render root
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/Login" element={<LoginPage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route
             path="/dashboard/*"
             element={
@@ -29,7 +22,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/Dashboard" />} />
+          {/* fallback */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
