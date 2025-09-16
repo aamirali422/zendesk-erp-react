@@ -3,7 +3,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 
 // Map submenu categories to a field you already have.
-// Here I’m matching your dummy "reason" field.
+// Here we match the dummy "reason" field.
 const CATEGORY_TO_REASON = {
   "tech-help": "Support",
   "data-recovery": "Complaint",     // tweak as you like
@@ -14,13 +14,13 @@ const CATEGORY_TO_REASON = {
 // Dummy tickets generator (with status + createdAt + reason)
 const generateTickets = () => {
   const tickets = [];
-  const subjects = ["Login Issue","Payment Failed","Bug Report","Feature Request","Account Locked"];
-  const reasons = ["Support","Complaint","Feedback","Inquiry","Other"];
-  const agents = ["Agent One","Agent Two"];
-  const requesters = ["john@example.com","sara@example.com","mike@example.com","lisa@example.com","tom@example.com"];
+  const subjects = ["Login Issue", "Payment Failed", "Bug Report", "Feature Request", "Account Locked"];
+  const reasons = ["Support", "Complaint", "Feedback", "Inquiry", "Other"];
+  const agents = ["Agent One", "Agent Two"];
+  const requesters = ["john@example.com", "sara@example.com", "mike@example.com", "lisa@example.com", "tom@example.com"];
   const products = [
-    "CFexpress™ v4 Type A","CFexpress™ 2.0 Type B","SDXC™ UHS-II","microSDXC™ UHS-I",
-    "Portable SSD","Card Reader CFast 2.0","Tech Pouch"
+    "CFexpress™ v4 Type A", "CFexpress™ 2.0 Type B", "SDXC™ UHS-II", "microSDXC™ UHS-I",
+    "Portable SSD", "Card Reader CFast 2.0", "Tech Pouch"
   ];
 
   const now = new Date();
@@ -72,10 +72,10 @@ export default function TicketsList({ onSelectTicket, category = "" }) {
   const containerRef = useRef();
 
   const allProducts = [
-    "CFexpress™ v4 Type A","CFexpress™ 2.0 Type B","SDXC™ UHS-II","microSDXC™ UHS-I",
-    "Portable SSD","Card Reader CFast 2.0","Tech Pouch"
+    "CFexpress™ v4 Type A", "CFexpress™ 2.0 Type B", "SDXC™ UHS-II", "microSDXC™ UHS-I",
+    "Portable SSD", "Card Reader CFast 2.0", "Tech Pouch"
   ];
-  const allAgents = ["Agent One","Agent Two"];
+  const allAgents = ["Agent One", "Agent Two"];
 
   // URL filters (from Analytics)
   const urlPeriod = (searchParams.get("period") || "").toLowerCase(); // week|month|year|''
@@ -113,13 +113,9 @@ export default function TicketsList({ onSelectTicket, category = "" }) {
     );
     if (loadMoreRef.current) observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
-  }, [visibleTickets, filteredTickets.length, visibleCount]);
+  }, [filteredTickets.length, visibleCount]);
 
-  // Remove ticket (demo)
-  const handleRemove = (id) => {
-    allTickets.current = allTickets.current.filter((t) => t.id !== id);
-    if (visibleCount > 0) setVisibleCount((prev) => Math.max(0, prev - 1));
-  };
+  
 
   const clearUrlFilters = () => {
     const next = new URLSearchParams(searchParams.toString());
@@ -201,9 +197,12 @@ export default function TicketsList({ onSelectTicket, category = "" }) {
         {visibleTickets.map((t) => (
           <div
             key={t.id}
-            className="flex justify-between items-center px-4 py-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+            className="flex justify-between items-center px-4 py-3 border-b border-gray-100 hover:bg-gray-50"
           >
-            <div onClick={() => onSelectTicket(t)} className="flex flex-col">
+            <div
+              onClick={() => onSelectTicket && onSelectTicket(t)}
+              className="flex flex-col cursor-pointer"
+            >
               <span className="font-semibold">
                 #{t.id} - {t.subject}
               </span>
@@ -215,12 +214,16 @@ export default function TicketsList({ onSelectTicket, category = "" }) {
                 Status: <strong>{t.status}</strong> · Created: {t.createdAt.toLocaleDateString()}
               </span>
             </div>
-            <button
-              onClick={() => handleRemove(t.id)}
-              className="ml-4 rounded-lg bg-black px-3 py-1.5 text-white text-sm hover:bg-gray-800"
-            >
-              View
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); onSelectTicket && onSelectTicket(t); }}
+                className="rounded-lg bg-black px-3 py-1.5 text-white text-sm hover:bg-gray-800"
+              >
+                View
+              </button>
+              
+            </div>
           </div>
         ))}
 
