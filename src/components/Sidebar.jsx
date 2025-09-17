@@ -2,20 +2,20 @@
 import { useState } from "react";
 import { FiLogOut, FiChevronRight, FiChevronDown, FiX } from "react-icons/fi";
 
-/**
- * Props:
- * - onSelect(viewKey: string)
- * - onLogout()
- * - isOpen? (bool)      // mobile drawer open?
- * - onClose? ()         // close drawer (mobile)
- */
 export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = () => {} }) {
   const [ticketsOpen, setTicketsOpen] = useState(true);
+  const [backupOpen, setBackupOpen] = useState(false); // ← NEW
 
   const handleMainTickets = () => {
     onSelect("tickets");
     onClose();
     setTicketsOpen((v) => !v);
+  };
+
+  const handleMainBackup = () => {                 // ← NEW
+    onSelect("backup");                             // optional: jump to main backup screen
+    onClose();
+    setBackupOpen((v) => !v);
   };
 
   const go = (key) => {
@@ -35,11 +35,7 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
     >
       {/* Mobile-only header */}
       <div className="mb-4 flex items-center justify-between md:hidden">
-        <img
-          src="https://www.angelbird.com/static/web/img/AB_Logo.svg"
-          alt="Angelbird Logo"
-          className="h-8"
-        />
+        <img src="https://www.angelbird.com/static/web/img/AB_Logo.svg" alt="Angelbird Logo" className="h-8" />
         <button onClick={onClose} className="rounded p-2 hover:bg-gray-100" aria-label="Close sidebar">
           <FiX />
         </button>
@@ -47,11 +43,7 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
 
       {/* Desktop logo */}
       <div className="hidden md:flex items-center justify-center mb-4">
-        <img
-          src="https://www.angelbird.com/static/web/img/AB_Logo.svg"
-          alt="Angelbird Logo"
-          className="h-10"
-        />
+        <img src="https://www.angelbird.com/static/web/img/AB_Logo.svg" alt="Angelbird Logo" className="h-10" />
       </div>
 
       <nav className="flex-1 space-y-1">
@@ -73,13 +65,24 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
           </div>
         )}
 
-        {/* Other main items */}
+        {/* Products & Orders */}
         <button onClick={() => go("products")} className="w-full flex justify-between items-center px-3 py-2 rounded hover:bg-gray-100">
           Products <FiChevronRight className="text-black" />
         </button>
         <button onClick={() => go("orders")} className="w-full flex justify-between items-center px-3 py-2 rounded hover:bg-gray-100">
           Orders <FiChevronRight className="text-black" />
         </button>
+
+        {/* Backup & Restore (collapsible with 2 sub-items) */}
+        <button
+          onClick={handleMainBackup}
+          className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100"
+        >
+          <span className="font-medium">Backup &amp; Restore</span>
+          {backupOpen ? <FiChevronDown className="text-black" /> : <FiChevronRight className="text-black" />}
+        </button>
+
+     
       </nav>
 
       {/* Logout */}
@@ -94,7 +97,6 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
 
   return (
     <>
-      {/* Mobile overlay */}
       <div
         onClick={onClose}
         className={`fixed inset-0 z-30 bg-black/40 md:hidden transition-opacity ${
