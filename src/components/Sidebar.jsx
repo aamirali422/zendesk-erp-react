@@ -1,10 +1,33 @@
+/* eslint-disable no-unused-vars */
+/* eslint-disable no-empty */
 // src/components/Sidebar.jsx
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FiLogOut, FiChevronRight, FiChevronDown, FiX } from "react-icons/fi";
 
 export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = () => {} }) {
   const [ticketsOpen, setTicketsOpen] = useState(true);
-  const [backupOpen, setBackupOpen] = useState(false); // ← NEW
+  const [backupOpen, setBackupOpen] = useState(false);
+
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/logout", { method: "POST", credentials: "include" });
+    } catch (e) {
+      // optional: console.warn("Logout request failed (continuing):", e);
+    }
+    localStorage.removeItem("isLoggedIn");
+    localStorage.removeItem("zdUser");
+    localStorage.removeItem("zdSubdomain");
+
+    // Call parent hook if provided (keeps old behavior working)
+    if (typeof onLogout === "function") {
+      try { onLogout(); } catch {}
+    }
+
+    navigate("/login");
+  }
 
   const handleMainTickets = () => {
     onSelect("tickets");
@@ -12,8 +35,8 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
     setTicketsOpen((v) => !v);
   };
 
-  const handleMainBackup = () => {                 // ← NEW
-    onSelect("backup");                             // optional: jump to main backup screen
+  const handleMainBackup = () => {
+    onSelect("backup");
     onClose();
     setBackupOpen((v) => !v);
   };
@@ -73,7 +96,7 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
           Orders <FiChevronRight className="text-black" />
         </button>
 
-        {/* Backup & Restore (collapsible with 2 sub-items) */}
+        {/* Backup & Restore (collapsible) */}
         <button
           onClick={handleMainBackup}
           className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100"
@@ -82,12 +105,21 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
           {backupOpen ? <FiChevronDown className="text-black" /> : <FiChevronRight className="text-black" />}
         </button>
 
-     
+        {backupOpen && (
+          <div className="ml-2 pl-4 border-l border-gray-200 space-y-1 py-1">
+            <button onClick={() => go("backup:get")} className="w-full text-left text-sm px-3 py-2 rounded hover:bg-gray-100">
+              Get backup from Zendesk
+            </button>
+            <button onClick={() => go("backup:restore")} className="w-full text-left text-sm px-3 py-2 rounded hover:bg-gray-100">
+              Restore backup from DB
+            </button>
+          </div>
+        )}
       </nav>
 
       {/* Logout */}
       <button
-        onClick={() => { onLogout(); onClose(); }}
+        onClick={() => { handleLogout(); onClose(); }}
         className="mt-auto w-full flex justify-between items-center px-3 py-2 rounded bg-black text-white hover:bg-gray-800"
       >
         Logout <FiLogOut className="text-white" />
@@ -97,6 +129,7 @@ export default function Sidebar({ onSelect, onLogout, isOpen = false, onClose = 
 
   return (
     <>
+      {/* Mobile overlay */}
       <div
         onClick={onClose}
         className={`fixed inset-0 z-30 bg-black/40 md:hidden transition-opacity ${

@@ -5,7 +5,7 @@ import { FiMenu } from "react-icons/fi";
 
 import Sidebar from "../components/Sidebar";
 import AnalyticsCards from "../components/AnalyticsCards";
-import TicketsList from "../components/TicketList";            // <- ensure the file is TicketList.jsx
+import TicketList from "../components/TicketList";    // ensure file is src/components/TicketList.jsx
 import TicketDetail from "../components/TicketDetail";
 import ReadonlyTicketDetail from "../components/ReadonlyTicketDetail";
 import ProductsList from "../components/ProductsList";
@@ -13,19 +13,29 @@ import OrdersTable from "../components/OrdersTable";
 import BackupRestore from "../components/BackupRestore";
 
 export default function Dashboard() {
-  const [view, setView] = useState("tickets");      // 'tickets' | 'products' | 'orders' | 'backup' | 'readonly-ticket'
+  const [view, setView] = useState("tickets");          // 'tickets' | 'products' | 'orders' | 'backup' | 'readonly-ticket'
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [ticketCategory, setTicketCategory] = useState(""); // 'tech-help' | 'data-recovery' | 'warranty-claim' | 'general-support' | ''
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [backupMode, setBackupMode] = useState("");  // '' | 'create' | 'restore'
+  const [backupMode, setBackupMode] = useState("");     // '' | 'create' | 'restore'
 
   const navigate = useNavigate();
-  const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
-    navigate("/login");
+
+  // Server-side logout + local cleanup
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/logout", { method: "POST", credentials: "include" });
+    } catch (err) {
+      console.error("Logout failed:", err);
+    } finally {
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("zdUser");
+      localStorage.removeItem("zdSubdomain");
+      navigate("/login");
+    }
   };
 
-  // Add synthetic data (messages, erp, defaults) so both detail views render nicely
+  // Enrich a ticket so both detail views have nice data
   const enrichTicket = (t) => {
     if (!t) return t;
     const n = Number(String(t.id).slice(-2));
@@ -49,8 +59,8 @@ export default function Dashboard() {
           orderId: `ERP-${1000 + (n % 50)}`,
           status: erpStatus,
           customer: {
-            name: (t.requester || "").split("@")[0] || "Customer",
-            email: t.requester || "customer@example.com",
+            name: (t.requester || t.requesterLabel || "").toString().split("@")[0] || "Customer",
+            email: t.requester || t.requesterLabel || "customer@example.com",
           },
           items: [
             { sku: "X123", name: "CFexpress™ v4 Type A", qty: (n % 3) + 1 },
@@ -116,7 +126,7 @@ export default function Dashboard() {
   // From Tickets list: open editable detail (communicate)
   const openEditableTicket = (t) => {
     setSelectedTicket(enrichTicket(t));
-    setView("tickets"); // stays in tickets, our condition below shows TicketDetail when selectedTicket is set
+    setView("tickets"); // TicketDetail renders when selectedTicket is set
   };
 
   // From Backup/Restore: open read-only detail
@@ -164,11 +174,10 @@ export default function Dashboard() {
           <div className="space-y-4">
             <AnalyticsCards />
             <div className="bg-white rounded-lg shadow-md">
-              <TicketsList
+              <TicketList
                 category={ticketCategory}
-                // If your TicketList has two buttons (Communicate & View) you can pass both:
-                onSelectTicket={openEditableTicket}             // open editable TicketDetail
-                onSelectTicketReadonly={openReadonlyTicket}      // optional: open read-only from list
+                onSelectTicket={openEditableTicket}        // editable TicketDetail
+                onSelectTicketReadonly={openReadonlyTicket} // optional 2nd View for read-only
               />
             </div>
           </div>
@@ -199,8 +208,8 @@ export default function Dashboard() {
         {/* Backup & Restore */}
         {view === "backup" && (
           <BackupRestore
-            mode={backupMode}                 // '' | 'create' | 'restore'
-            onView={openReadonlyTicket}       // clicking "View" inside BackupRestore opens read-only detail
+            mode={backupMode}           // '' | 'create' | 'restore'
+            onView={openReadonlyTicket} // View inside BackupRestore → Readonly detail
           />
         )}
 

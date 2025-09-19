@@ -1,127 +1,87 @@
-// src/components/ReadonlyTicketDetail.jsx
-import ERPPanel from "./ERPPanel";
+import { useEffect, useState } from "react";
+import { getTicket, listComments } from "@/lib/zdClient";
+import ReadonlyTicketDetail from "./ReadonlyTicketDetail";
 
-export default function ReadonlyTicketDetail({ ticket, onBack, onView }) {
-  if (!ticket) {
-    return (
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500">
-        No ticket selected.
-      </div>
-    );
+export default function ReadonlyTicketDetailContainer({ baseTicket, onBack }) {
+  const [loading, setLoading] = useState(true);
+  const [ticketData, setTicketData] = useState(null);
+
+  useEffect(() => {
+    if (!baseTicket?.id) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const t = await getTicket(baseTicket.id);
+        const c = await listComments(baseTicket.id);
+
+        // Build maps for requester/assignee/org
+        const users = t.users || [];
+        const orgs = t.organizations || [];
+        const userMap = new Map(users.map((u) => [u.id, u]));
+        const orgMap = new Map(orgs.map((o) => [o.id, o]));
+
+        const requesterUser = userMap.get(t.ticket.requester_id);
+        const assigneeUser = userMap.get(t.ticket.assignee_id);
+        const org = orgMap.get(t.ticket.organization_id);
+
+        // Normalize comments → messages
+        const messages = (c.comments || []).map((cm) => ({
+          from: cm.public ? "Agent" : "Internal",
+          time: new Date(cm.created_at).toLocaleString(),
+          text: cm.body,
+        }));
+
+        setTicketData({
+          id: t.ticket.id,
+          subject: t.ticket.subject,
+          requester: requesterUser?.name || requesterUser?.email || t.ticket.requester_id,
+          agent: assigneeUser?.name || assigneeUser?.email || "Unassigned",
+          tags: t.ticket.tags || [],
+          type: t.ticket.type || "-",
+          priority: t.ticket.priority || "Normal",
+          status: t.ticket.status,
+          organization: org?.name || "—",
+          messages,
+          erp: getMockErpFromTicket(t.ticket), // reuse same mock ERP logic
+        });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [baseTicket?.id]);
+
+  if (!baseTicket) {
+    return <div className="p-6 text-sm text-gray-500">No ticket selected.</div>;
+  }
+  if (loading) {
+    return <div className="p-6 text-sm text-gray-500">Loading ticket…</div>;
   }
 
-  const handleView = () => {
-    // Prefer a caller-provided handler
-    if (onView) return onView(ticket);
+  return <ReadonlyTicketDetail ticket={ticketData} onBack={onBack} />;
+}
 
-    // Fallback: open external URL if present (e.g., Zendesk ticket URL)
-    if (ticket.externalUrl) {
-      window.open(ticket.externalUrl, "_blank", "noopener,noreferrer");
-    }
+/** Mock ERP just like in TicketDetail */
+function getMockErpFromTicket(ticket) {
+  const n = Number(String(ticket.id).slice(-2));
+  const statusPool = ["Processing", "Pending", "Shipped"];
+  const status = statusPool[n % statusPool.length];
+
+  return {
+    orderId: `ERP-${1000 + (n % 50)}`,
+    status,
+    customer: {
+      name: (ticket.requester || "").split("@")[0] || "Customer",
+      email: ticket.requester || "customer@example.com",
+    },
+    items: [
+      { sku: "X123", name: "CFexpress™ v4 Type A", qty: (n % 3) + 1 },
+      { sku: "Y456", name: "Card Reader CFast 2.0", qty: 1 },
+    ],
+    totals: { subtotal: "€199.00", shipping: "€10.00", total: "€209.00" },
+    shipments:
+      status === "Shipped"
+        ? [{ id: `SHP-${2100 + (n % 90)}`, carrier: "DHL", tracking: "DHL123456789", eta: "3–5 days" }]
+        : [],
+    invoices: [{ id: `INV-${3100 + (n % 120)}`, amount: "€209.00" }],
   };
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-      {/* LEFT */}
-      <section className="md:col-span-2 space-y-4">
-        {/* Header Card */}
-        <div className="rounded-2xl border border-gray-200 bg-white p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={onBack}
-                className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-              >
-                ← Back
-              </button>
-              <h3 className="text-lg font-semibold">
-                Ticket #{ticket.id} — {ticket.subject}
-              </h3>
-            </div>
-
-            {/* NEW: View button */}
-            <button
-              onClick={handleView}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-            >
-              View
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Requester</label>
-              <p className="mt-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
-                {ticket.requester}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Assignee</label>
-              <p className="mt-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
-                {ticket.agent}
-              </p>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Tags</label>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {ticket.tags?.length ? (
-                  ticket.tags.map((t) => (
-                    <span
-                      key={t}
-                      className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs"
-                    >
-                      {t}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-gray-500">—</span>
-                )}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Type</label>
-              <p className="mt-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
-                {ticket.type || "-"}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Priority</label>
-              <p className="mt-1 rounded-lg border bg-gray-50 px-3 py-2 text-sm">
-                {ticket.priority}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Conversation Card */}
-        <div className="rounded-2xl border border-gray-200 bg-white">
-          <div className="p-4 space-y-3">
-            {ticket.messages?.length ? (
-              ticket.messages.map((m, idx) => (
-                <div
-                  key={idx}
-                  className={`p-3 rounded-lg border ${
-                    m.from === "Agent" ? "bg-blue-50" : "bg-gray-50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold">{m.from}</p>
-                    <p className="text-xs text-gray-500">{m.time}</p>
-                  </div>
-                  <p className="text-sm mt-1">{m.text}</p>
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-gray-500">No messages.</div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* RIGHT: ERP */}
-      <section className="md:col-span-1">
-        <ERPPanel erp={ticket.erp} />
-      </section>
-    </div>
-  );
 }

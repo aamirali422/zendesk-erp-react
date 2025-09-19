@@ -1,3 +1,4 @@
+// src/pages/LoginPage.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -5,35 +6,49 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
-    username: "demo@angelbird.com",
-    password: "Angelbird#2025",
-    zendeskSubdomain: "angelbird",
+    email: "alex@codered-tech.com",           // your Zendesk email
+    token: "wwq0RELx5qj2ZxyFdocyMMdjaxTER6QL1ds0hGAZ", // your Zendesk API token
+    subdomain: "software-6493",               // your subdomain (leave "angelbird" if you prefer)
     erpBaseUrl: "https://erp.angelbird.example",
   });
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
+  const handleChange = (e) =>
+    setFormData((s) => ({ ...s, [e.target.name]: e.target.value }));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Login Data:", formData);
+    setErr("");
+    setLoading(true);
+    try {
+      const resp = await fetch("/api/login", {
+        method: "POST",
+        credentials: "include", // <-- important (sets session cookie)
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: formData.email.trim(),
+          token: formData.token.trim(),
+          subdomain: formData.subdomain.trim(),
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        throw new Error(
+          typeof data.error === "string" ? data.error : "Login failed"
+        );
+      }
 
-    // Simulate login
-    if (
-      formData.username === "demo@angelbird.com" &&
-      formData.password === "Angelbird#2025"
-    ) {
-      // Set login flag for ProtectedRoute
+      // Optional: store a little client hint
       localStorage.setItem("isLoggedIn", "true");
+      localStorage.setItem("zdUser", JSON.stringify(data.user));
+      localStorage.setItem("zdSubdomain", data.subdomain);
 
-      // Redirect to dashboard
       navigate("/dashboard");
-    } else {
-      alert("Invalid credentials!");
+    } catch (e2) {
+      setErr(e2.message || "Login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -41,84 +56,69 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
         <h2 className="mb-6 text-center text-2xl font-semibold text-gray-800">
-          Sign in to Integration
+          Sign in to Zendesk
         </h2>
-        <p className="mb-6 text-center text-sm text-gray-500">
-          Use demo credentials and we will simulate calling both Zendesk & ERP APIs.
-        </p>
+
+        {err && (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">
+            {err}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Username */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Username
-            </label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Zendesk Email</label>
             <input
               type="email"
-              name="username"
-              value={formData.username}
+              name="email"
+              value={formData.email}
               onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
             />
           </div>
 
-          {/* Password */}
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Password
-            </label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">API Token</label>
             <input
               type="password"
-              name="password"
-              value={formData.password}
+              name="token"
+              value={formData.token}
               onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
             />
           </div>
 
-          {/* Zendesk + ERP Row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                Zendesk Subdomain
-              </label>
-              <input
-                type="text"
-                name="zendeskSubdomain"
-                value={formData.zendeskSubdomain}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">
-                ERP Base URL
-              </label>
-              <input
-                type="url"
-                name="erpBaseUrl"
-                value={formData.erpBaseUrl}
-                onChange={handleChange}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
-              />
-            </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Zendesk Subdomain</label>
+            <input
+              type="text"
+              name="subdomain"
+              value={formData.subdomain}
+              onChange={handleChange}
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
+              placeholder="e.g. software-6493"
+            />
           </div>
 
-          {/* Submit */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">ERP Base URL (optional)</label>
+            <input
+              type="url"
+              name="erpBaseUrl"
+              value={formData.erpBaseUrl}
+              onChange={handleChange}
+              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
+            />
+          </div>
+
           <button
             type="submit"
-            className="w-full rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-gray-800 focus:ring-2 focus:ring-indigo-300"
+            disabled={loading}
+            className="w-full rounded-lg bg-gray-900 px-4 py-2 text-white hover:bg-gray-800 focus:ring-2 focus:ring-indigo-300 disabled:opacity-60"
           >
-            Login & Connect Both
+            {loading ? "Connecting…" : "Login & Connect"}
           </button>
         </form>
-
-        <p className="mt-4 text-center text-xs text-gray-500">
-          Demo creds:{" "}
-          <span className="font-medium">
-            demo@angelbird.com / Angelbird#2025
-          </span>
-        </p>
       </div>
     </div>
   );
