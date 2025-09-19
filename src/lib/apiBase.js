@@ -1,6 +1,20 @@
 // src/lib/apiBase.js
-export const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
 export function apiUrl(path) {
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${p}`;
+  // Always relative so it works on Vercel and locally (dev proxy)
+  if (!path.startsWith("/")) return `/api${path}`;
+  // If caller already passed `/api/...`, keep it; otherwise prefix.
+  return path.startsWith("/api") ? path : `/api${path}`;
+}
+
+export async function ensureOk(res) {
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      msg = data?.error || msg;
+    } catch {
+      // ignore
+    }
+    throw new Error(msg);
+  }
 }

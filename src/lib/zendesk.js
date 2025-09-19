@@ -1,22 +1,10 @@
 // src/lib/zendesk.js
+import { apiUrl, ensureOk } from "./apiBase";
 
-export async function zdGet(path) {
-  const resp = await fetch(`/api/zendesk?path=${encodeURIComponent(path)}`, {
-    credentials: "include",
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data?.error || "Zendesk GET failed");
-  return data;
-}
-
-export async function zdPost(path, body) {
-  const resp = await fetch(`/api/zendesk?path=${encodeURIComponent(path)}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data?.error || "Zendesk POST failed");
-  return data;
+/** Proxy GET to Zendesk: pass a Zendesk path like "/api/v2/tickets.json?per_page=50" */
+export async function zdGet(zdPath) {
+  const url = apiUrl(`/zendesk?path=${encodeURIComponent(zdPath)}`);
+  const res = await fetch(url, { credentials: "include" });
+  await ensureOk(res);
+  return res.json();
 }

@@ -45,13 +45,10 @@ function pathFromNextPage(fullUrl) {
     const u = new URL(fullUrl);
     const idx = u.pathname.indexOf("/api/v2");
     if (idx >= 0) {
-      // Keep the full /api/v2/... tail + search
       const full = u.pathname.slice(idx) + (u.search || "");
       return full || "/api/v2/tickets.json";
     }
-  // eslint-disable-next-line no-unused-vars
-  } catch (e) {
-    // Invalid or missing next_page URL; stop pagination gracefully
+  } catch (_e) {
     return null;
   }
   return null;
@@ -105,7 +102,11 @@ function buildInitialPath(source, orgId, userId) {
   }
 }
 
-export default function TicketsList({ onSelectTicket, onSelectTicketReadonly, category = "" }) {
+export default function TicketsList({
+  onSelectTicket,
+  onSelectTicketReadonly,
+  category = "",
+}) {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Source selector + IDs
@@ -126,8 +127,8 @@ export default function TicketsList({ onSelectTicket, onSelectTicketReadonly, ca
   const [error, setError] = useState(null);
 
   // Infinite scroll refs
-  const containerRef = useRef();
-  const loadMoreRef = useRef();
+  const containerRef = useRef(null);
+  const loadMoreRef = useRef(null);
 
   // Static dropdowns (kept to match your UI theme)
   const allProducts = [
@@ -176,17 +177,18 @@ export default function TicketsList({ onSelectTicket, onSelectTicketReadonly, ca
     }
 
     try {
-      const data = await zdGet(path);
+      const data = await zdGet(path); // calls /api/zendesk?path=...
       const list = (data.tickets || []).map(normalizeTicket);
       setTickets(list);
       setNextPagePath(pathFromNextPage(data.next_page || ""));
     } catch (err) {
-      console.error("Zendesk fetch failed:", err);
+      // Bubble a friendly message
       const msg =
         err?.message ||
         (typeof err === "string" ? err : null) ||
         "Failed to fetch tickets from Zendesk.";
       setError(msg);
+      console.error("Zendesk fetch failed:", err);
     } finally {
       setLoading(false);
     }
@@ -202,10 +204,10 @@ export default function TicketsList({ onSelectTicket, onSelectTicketReadonly, ca
 
         try {
           setLoadingMore(true);
-          const data = await zdGet(nextPagePath);
-          const list = (data.tickets || []).map(normalizeTicket);
+          const more = await zdGet(nextPagePath);
+          const list = (more.tickets || []).map(normalizeTicket);
           setTickets((prev) => [...prev, ...list]);
-          setNextPagePath(pathFromNextPage(data.next_page || ""));
+          setNextPagePath(pathFromNextPage(more.next_page || ""));
         } catch (err) {
           console.error("Load more failed:", err);
           setNextPagePath(null);
