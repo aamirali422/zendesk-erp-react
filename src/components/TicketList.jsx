@@ -48,6 +48,7 @@ function pathFromNextPage(fullUrl) {
       const full = u.pathname.slice(idx) + (u.search || "");
       return full || "/api/v2/tickets.json";
     }
+  // eslint-disable-next-line no-unused-vars
   } catch (_e) {
     return null;
   }

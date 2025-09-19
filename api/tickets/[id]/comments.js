@@ -1,60 +1,83 @@
+// api/tickets/[id]/comment.js
+export const config = { runtime: "nodejs20.x" };
+
 import axios from "axios";
-import multiparty from "multiparty";
-import { getSession, authHeader } from "../../_session.js";
-
-export const config = { api: { bodyParser: false } };
-
-function parseForm(req) {
-  return new Promise((resolve, reject) => {
-    const form = new multiparty.Form();
-    form.parse(req, (err, fields, files) => {
-      if (err) return reject(err);
-      resolve({ fields, files });
-    });
-  });
-}
+import formidable from "formidable";
+import { readSession, authHeader } from "../../_session.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
+  if (req.method !== "POST") {
+    res.status(405).json({ ok: false, error: "Method not allowed" });
+    return;
+  }
 
-  const sess = getSession(req, res);
+  const sess = readSession(req, res);
   if (!sess) return;
 
   try {
-    const { fields, files } = await parseForm(req);
-    const body = fields.body?.[0] || "";
-    const html_body = fields.html_body?.[0];
-    const isPublic = (fields.isPublic?.[0] || "true") === "true";
+    // Parse multipart
+    const form = formidable({ multiples: true, keepExtensions: true });
+    const { fields, files } = await new Promise((resolve, reject) => {
+      form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })));
+    });
+
+    const body = fields.body?.toString() || "Attachment(s) uploaded.";
+    const html_body = fields.html_body?.toString();
+    const isPublic = (fields.isPublic ?? "true").toString() === "true";
 
     const base = `https://${sess.subdomain}.zendesk.com`;
-    const headers = { Authorization: authHeader(sess.email, sess.apiToken) };
+    const tokens = [];
 
-    const uploads = [];
-    for (const f of (files.files || [])) {
-      const file = f;
-      const data = await axios.post(
-        `${base}/api/v2/uploads.json?filename=${encodeURIComponent(file.originalFilename)}`,
-        // Multiparty gives us a path. Stream it.
-        require("fs").createReadStream(file.path),
-        { headers: { ...headers, "Content-Type": file.headers["content-type"] || "application/octet-stream" } }
+    // Normalize to an array of file objects
+    const fileList = []
+      .concat(files.files || [])
+      .concat(files["files[]"] || []);
+
+    for (const f of fileList) {
+      if (!f || !f.filepath) continue;
+      const up = await axios.post(
+        `${base}/api/v2/uploads.json?filename=${encodeURIComponent(f.originalFilename || f.newFilename || "file")}`,
+        // Send the file as a stream
+        require("fs").createReadStream(f.filepath),
+        {
+          headers: {
+            Authorization: authHeader(sess.email, sess.apiToken),
+            "Content-Type": f.mimetype || "application/octet-stream",
+          },
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        }
       );
-      uploads.push(data.data.upload.token);
+      tokens.push(up.data.upload.token);
     }
 
+    // Add the comment
     const payload = {
       ticket: {
         comment: {
-          ...(html_body ? { html_body } : { body: body || "Attachment(s) uploaded." }),
+          ...(html_body ? { html_body } : { body }),
           public: isPublic,
-          ...(uploads.length ? { uploads } : {}),
+          ...(tokens.length ? { uploads: tokens } : {}),
         },
       },
     };
 
-    const put = await axios.put(`${base}/api/v2/tickets/${req.query.id}.json`, payload, { headers });
-    res.json(put.data);
+    const zdResp = await axios.put(
+      `${base}/api/v2/tickets/${req.query.id}.json`,
+      payload,
+      {
+        headers: {
+          Authorization: authHeader(sess.email, sess.apiToken),
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    res.status(200).json(zdResp.data);
   } catch (err) {
     const status = err?.response?.status || 500;
-    res.status(status).json({ ok: false, error: err?.response?.data || err.message });
+    const data = err?.response?.data || err.message;
+    console.error("POST comment error:", status, data);
+    res.status(status).json({ ok: false, error: data });
   }
 }
