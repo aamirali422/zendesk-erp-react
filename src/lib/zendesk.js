@@ -1,10 +1,12 @@
 // src/lib/zendesk.js
-import { apiUrl, ensureOk } from "./apiBase";
+import { apiUrl, ensureOk } from "@/lib/apiBase";
 
-/** Proxy GET to Zendesk: pass a Zendesk path like "/api/v2/tickets.json?per_page=50" */
-export async function zdGet(zdPath) {
-  const url = apiUrl(`/zendesk?path=${encodeURIComponent(zdPath)}`);
-  const res = await fetch(url, { credentials: "include" });
+/** Pass a Zendesk /api/v2 path (MUST start with /api/v2) */
+export async function zdGet(path) {
+  const res = await fetch(
+    apiUrl(`/api/zendesk?path=${encodeURIComponent(path)}`),
+    { credentials: "include" }
+  );
   await ensureOk(res);
   return res.json();
 }
