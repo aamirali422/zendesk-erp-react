@@ -1,16 +1,19 @@
 // src/pages/LoginPage.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { login } from "@/lib/zdClient"; // <-- use the helper (handles apiUrl + ensureOk)
 
 export default function LoginPage() {
   const navigate = useNavigate();
 
+  // Prefilled for dev only. Remove/clear for production.
   const [formData, setFormData] = useState({
-    email: "alex@codered-tech.com",           // your Zendesk email
-    token: "wwq0RELx5qj2ZxyFdocyMMdjaxTER6QL1ds0hGAZ", // your Zendesk API token
-    subdomain: "software-6493",               // your subdomain (leave "angelbird" if you prefer)
+    email: "alex@codered-tech.com",
+    token: "wwq0RELx5qj2ZxyFdocyMMdjaxTER6QL1ds0hGAZ",
+    subdomain: "software-6493",
     erpBaseUrl: "https://erp.angelbird.example",
   });
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -22,31 +25,21 @@ export default function LoginPage() {
     setErr("");
     setLoading(true);
     try {
-      const resp = await fetch("/api/login", {
-        method: "POST",
-        credentials: "include", // <-- important (sets session cookie)
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email.trim(),
-          token: formData.token.trim(),
-          subdomain: formData.subdomain.trim(),
-        }),
+      const { email, token, subdomain } = formData;
+      const resp = await login({
+        email: email.trim(),
+        token: token.trim(),
+        subdomain: subdomain.trim(),
       });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        throw new Error(
-          typeof data.error === "string" ? data.error : "Login failed"
-        );
-      }
 
-      // Optional: store a little client hint
+      // Optional: store small hints for UX
       localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("zdUser", JSON.stringify(data.user));
-      localStorage.setItem("zdSubdomain", data.subdomain);
+      localStorage.setItem("zdUser", JSON.stringify(resp.user));
+      localStorage.setItem("zdSubdomain", resp.subdomain);
 
       navigate("/dashboard");
     } catch (e2) {
-      setErr(e2.message || "Login failed");
+      setErr(e2?.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -67,29 +60,42 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Zendesk Email</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Zendesk Email
+            </label>
             <input
               type="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
               className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
+              autoComplete="email"
+              required
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">API Token</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              API Token
+            </label>
             <input
               type="password"
               name="token"
               value={formData.token}
               onChange={handleChange}
               className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
+              autoComplete="current-password"
+              required
             />
+            <p className="mt-1 text-xs text-gray-500">
+              Zendesk Admin → Apps and Integrations → APIs → Add API token.
+            </p>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Zendesk Subdomain</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Zendesk Subdomain
+            </label>
             <input
               type="text"
               name="subdomain"
@@ -97,11 +103,17 @@ export default function LoginPage() {
               onChange={handleChange}
               className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
               placeholder="e.g. software-6493"
+              required
             />
+            <p className="mt-1 text-xs text-gray-500">
+              API base: https://<b>{formData.subdomain || "your-subdomain"}</b>.zendesk.com/api/v2
+            </p>
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">ERP Base URL (optional)</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              ERP Base URL (optional)
+            </label>
             <input
               type="url"
               name="erpBaseUrl"

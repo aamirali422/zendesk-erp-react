@@ -3,6 +3,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { zdGet } from "@/lib/zendesk";
 
+const data = await zdGet("/api/v2/tickets.json?per_page=50");
 /** Best-effort mapping from submenu category -> type/tags */
 const matchesCategory = (ticket, categoryKey) => {
   if (!categoryKey) return true;
