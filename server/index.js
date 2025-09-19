@@ -1,5 +1,6 @@
 /* eslint-env node */
 import "dotenv/config";
+import process from "node:process";  
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -12,9 +13,18 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* --------------------------- Middleware --------------------------- */
+const allowedOrigins = [
+  "http://localhost:5173",                   // vite dev
+  "https://zendesk-erp-react-cqhz.vercel.app" // your vercel frontend
+];
+
 app.use(
   cors({
-    origin: "http://localhost:5173", // adjust if frontend runs elsewhere
+    origin: function (origin, cb) {
+      if (!origin) return cb(null, true); // allow curl/postman
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error("CORS not allowed from " + origin), false);
+    },
     credentials: true,
   })
 );
@@ -22,12 +32,10 @@ app.use(express.json());
 app.use(cookieParser());
 
 /* ----------------------- In-memory sessions ----------------------- */
-// sid -> { email, apiToken, subdomain }
 const sessions = new Map();
 
 /* -------------------------- Helpers ------------------------------- */
 function authHeader(email, apiToken) {
-  // Zendesk: Basic base64("<email>/token:<apiToken>")
   const tokenStr = `${email}/token:${apiToken}`;
   const b64 = Buffer.from(tokenStr).toString("base64");
   return `Basic ${b64}`;
@@ -66,7 +74,7 @@ app.post("/api/login", async (req, res) => {
 
     res.cookie("zd_sid", sid, {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       secure: process.env.NODE_ENV === "production",
       maxAge: 1000 * 60 * 60 * 8, // 8 hours
     });
@@ -93,7 +101,7 @@ app.post("/api/logout", (req, res) => {
   const sid = req.cookies?.zd_sid;
   if (sid) sessions.delete(sid);
   res.clearCookie("zd_sid", {
-    sameSite: "lax",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     secure: process.env.NODE_ENV === "production",
   });
   res.json({ ok: true });
@@ -103,43 +111,32 @@ app.post("/api/logout", (req, res) => {
 app.get("/api/tickets/:id", async (req, res) => {
   const sess = requireSession(req, res);
   if (!sess) return;
-
   try {
     const base = `https://${sess.subdomain}.zendesk.com`;
     const url = `${base}/api/v2/tickets/${req.params.id}.json?include=users,organizations,groups`;
-    const zdResp = await axios.get(url, {
-      headers: { Authorization: authHeader(sess.email, sess.apiToken) },
-    });
+    const zdResp = await axios.get(url, { headers: { Authorization: authHeader(sess.email, sess.apiToken) } });
     res.json(zdResp.data);
   } catch (err) {
-    res
-      .status(err?.response?.status || 500)
-      .json({ ok: false, error: err?.response?.data || err.message });
+    res.status(err?.response?.status || 500).json({ ok: false, error: err?.response?.data || err.message });
   }
 });
 
 app.get("/api/tickets/:id/comments", async (req, res) => {
   const sess = requireSession(req, res);
   if (!sess) return;
-
   try {
     const base = `https://${sess.subdomain}.zendesk.com`;
     const url = `${base}/api/v2/tickets/${req.params.id}/comments.json?include=users&include_inline_images=true`;
-    const zdResp = await axios.get(url, {
-      headers: { Authorization: authHeader(sess.email, sess.apiToken) },
-    });
+    const zdResp = await axios.get(url, { headers: { Authorization: authHeader(sess.email, sess.apiToken) } });
     res.json(zdResp.data);
   } catch (err) {
-    res
-      .status(err?.response?.status || 500)
-      .json({ ok: false, error: err?.response?.data || err.message });
+    res.status(err?.response?.status || 500).json({ ok: false, error: err?.response?.data || err.message });
   }
 });
 
 app.put("/api/tickets/:id", async (req, res) => {
   const sess = requireSession(req, res);
   if (!sess) return;
-
   try {
     const base = `https://${sess.subdomain}.zendesk.com`;
     const url = `${base}/api/v2/tickets/${req.params.id}.json`;
@@ -151,16 +148,13 @@ app.put("/api/tickets/:id", async (req, res) => {
     });
     res.json(zdResp.data);
   } catch (err) {
-    res
-      .status(err?.response?.status || 500)
-      .json({ ok: false, error: err?.response?.data || err.message });
+    res.status(err?.response?.status || 500).json({ ok: false, error: err?.response?.data || err.message });
   }
 });
 
 app.post("/api/tickets/:id/comment", upload.array("files"), async (req, res) => {
   const sess = requireSession(req, res);
   if (!sess) return;
-
   try {
     const base = `https://${sess.subdomain}.zendesk.com`;
     const { body, html_body, isPublic } = req.body;
@@ -191,73 +185,24 @@ app.post("/api/tickets/:id/comment", upload.array("files"), async (req, res) => 
       },
     };
 
-    const zdResp = await axios.put(
-      `${base}/api/v2/tickets/${req.params.id}.json`,
-      payload,
-      {
-        headers: {
-          Authorization: authHeader(sess.email, sess.apiToken),
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const zdResp = await axios.put(`${base}/api/v2/tickets/${req.params.id}.json`, payload, {
+      headers: {
+        Authorization: authHeader(sess.email, sess.apiToken),
+        "Content-Type": "application/json",
+      },
+    });
 
     res.json(zdResp.data);
   } catch (err) {
     const status = err?.response?.status || 500;
     const data = err?.response?.data;
-
     console.error("Zendesk comment error:", status, JSON.stringify(data));
-
-    return res.status(status).json({
-      ok: false,
-      error: data || err.message || "Unknown error",
-    });
-  }
-});
-
-/* ---------------------- Generic Zendesk proxy --------------------- */
-app.all("/api/zendesk", async (req, res) => {
-  try {
-    const sess = requireSession(req, res);
-    if (!sess) return;
-
-    const path = req.query?.path;
-    if (!path || !String(path).startsWith("/api/v2")) {
-      return res.status(400).json({ ok: false, error: "Invalid or missing ?path=/api/v2/..." });
-    }
-
-    const base = `https://${sess.subdomain}.zendesk.com`;
-    const url = `${base}${path}`;
-    const headers = {
-      Authorization: authHeader(sess.email, sess.apiToken),
-      "Content-Type": "application/json",
-    };
-
-    let zdResp;
-    if (req.method === "GET") {
-      zdResp = await axios.get(url, { headers });
-    } else if (req.method === "POST") {
-      zdResp = await axios.post(url, req.body, { headers });
-    } else if (req.method === "PUT") {
-      zdResp = await axios.put(url, req.body, { headers });
-    } else if (req.method === "DELETE") {
-      zdResp = await axios.delete(url, { headers });
-    } else {
-      return res.status(405).json({ ok: false, error: "Method not allowed" });
-    }
-
-    res.status(zdResp.status).json(zdResp.data);
-  } catch (err) {
-    const status = err?.response?.status || 500;
-    res.status(status).json({ ok: false, error: err?.response?.data || err.message });
+    return res.status(status).json({ ok: false, error: data || err.message || "Unknown error" });
   }
 });
 
 /* --------------------------- Health check ------------------------- */
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, ts: Date.now() });
-});
+app.get("/api/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 /* ---------------------------- Listen ------------------------------ */
 const PORT = process.env.PORT || 4000;
