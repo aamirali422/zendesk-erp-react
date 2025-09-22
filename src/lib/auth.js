@@ -1,5 +1,5 @@
 // src/lib/auth.js
-import { apiUrl, ensureOk } from "./apiBase";
+import { apiUrl, ensureJson } from "./apiBase";
 
 export async function login({ email, token, subdomain }) {
   const res = await fetch(apiUrl("/login"), {
@@ -8,14 +8,12 @@ export async function login({ email, token, subdomain }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, token, subdomain }),
   });
-  await ensureOk(res);
-  return res.json();
+  return ensureJson(res);
 }
 
 export async function getSession() {
   const res = await fetch(apiUrl("/session"), { credentials: "include" });
-  await ensureOk(res);
-  return res.json();
+  return ensureJson(res);
 }
 
 export async function logout() {
@@ -23,6 +21,5 @@ export async function logout() {
     method: "POST",
     credentials: "include",
   });
-  await ensureOk(res);
-  return res.json();
+  return ensureJson(res);
 }

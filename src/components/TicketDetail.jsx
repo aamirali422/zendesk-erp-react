@@ -41,6 +41,9 @@ export default function TicketDetail({ ticket, onBack }) {
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState("");
 
+  // comments scroll ref
+  const commentsScrollRef = useRef(null);
+
   // Build maps
   const userMap = useMemo(() => {
     const all = [...ticketUsers, ...commentUsers];
@@ -91,6 +94,13 @@ export default function TicketDetail({ ticket, onBack }) {
       }
     })();
   }, [ticket?.id]);
+
+  // auto-scroll to bottom when comments change (after load or send)
+  useEffect(() => {
+    const el = commentsScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [comments.length]);
 
   // attach handlers
   const onAttachImages = (e) => {
@@ -151,7 +161,7 @@ export default function TicketDetail({ ticket, onBack }) {
 
       const trimmed = (message || "").trim();
       const hasFiles = attachments.length > 0;
-      const safeBody = trimmed || (hasFiles ? "Attachment(s) uploaded." : ""); // <-- fallback body for attachments-only
+      const safeBody = trimmed || (hasFiles ? "Attachment(s) uploaded." : ""); // fallback body
 
       if (!safeBody) {
         return toast("Type a message or attach at least one file.");
@@ -159,7 +169,7 @@ export default function TicketDetail({ ticket, onBack }) {
 
       await postComment({
         id: ticket.id,
-        body: safeBody, // <-- ensure Zendesk gets a non-empty body
+        body: safeBody,
         isPublic: replyType === "public",
         files: attachments,
       });
@@ -167,9 +177,15 @@ export default function TicketDetail({ ticket, onBack }) {
       const c = await listComments(ticket.id);
       setComments(c.comments || []);
       setCommentUsers(c.users || []);
-
       setMessage("");
       setAttachments([]);
+
+      // ensure we scroll to bottom after new comment arrives
+      requestAnimationFrame(() => {
+        const el = commentsScrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+
       toast(replyType === "public" ? "Reply sent." : "Note added.");
     } catch (err) {
       console.error(err);
@@ -340,9 +356,14 @@ export default function TicketDetail({ ticket, onBack }) {
           </div>
         </div>
 
-        {/* Conversation */}
-        <div className="rounded-2xl border border-gray-200 bg-white">
-          <div className="p-4 space-y-3">
+        {/* Conversation (comments scrollable, composer fixed) */}
+        <div className="rounded-2xl border border-gray-200 bg-white flex flex-col max-h-[70vh]">
+          {/* Scrollable comments area */}
+          <div
+            ref={commentsScrollRef}
+            className="p-4 space-y-3 flex-1 overflow-y-auto"
+            aria-label="Conversation thread"
+          >
             {comments.map((c) => (
               <div key={c.id} className={`p-3 rounded-lg border ${c.public ? "bg-blue-50" : "bg-gray-50"}`}>
                 <div className="flex items-center justify-between">
@@ -369,10 +390,13 @@ export default function TicketDetail({ ticket, onBack }) {
                 )}
               </div>
             ))}
+            {comments.length === 0 && (
+              <div className="text-sm text-gray-500">No messages yet.</div>
+            )}
           </div>
 
-          {/* Composer */}
-          <div className="p-4 border-t space-y-3">
+          {/* Composer (fixed at bottom of the card) */}
+          <div className="p-4 border-t shrink-0 space-y-3">
             {!canComment && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                 This ticket is <b>Closed</b>. You cannot add new comments. Create a follow-up ticket in Zendesk to continue the conversation.

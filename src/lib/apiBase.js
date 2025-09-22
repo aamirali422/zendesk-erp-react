@@ -1,22 +1,29 @@
 // src/lib/apiBase.js
 export function apiUrl(path) {
-  // Normalize incoming path (with or without leading /)
-  const clean = path.startsWith("/") ? path : `/${path}`;
-  // Ensure everything we call hits our backend prefix /api
-  return clean.startsWith("/api") ? clean : `/api${clean}`;
+  if (!path.startsWith("/")) return `/api${path}`;
+  return path.startsWith("/api") ? path : `/api${path}`;
 }
 
-// Reusable response guard
-export async function ensureOk(res) {
+// Core JSON guard that returns parsed JSON or throws rich errors
+export async function ensureJson(res) {
   if (!res.ok) {
     try {
-      const data = await res.json();
-      throw new Error(data?.error || `HTTP ${res.status}`);
+      const data = await res.clone().json();
+      const detail = data?.error || data?.message || JSON.stringify(data);
+      throw new Error(detail || `HTTP ${res.status}`);
     } catch {
-      const text = await res.text();
-      throw new Error(text || `HTTP ${res.status}`);
+      try {
+        const txt = await res.clone().text();
+        throw new Error(txt || `HTTP ${res.status}`);
+      } catch {
+        throw new Error(`HTTP ${res.status}`);
+      }
     }
   }
-  return res;
+  return res.json();
 }
-  
+
+// Back-compat alias (some files import ensureOk)
+export async function ensureOk(res) {
+  return ensureJson(res);
+}

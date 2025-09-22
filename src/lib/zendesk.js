@@ -1,5 +1,5 @@
 // src/lib/zendesk.js
-import { apiUrl, ensureOk } from "@/lib/apiBase";
+import { apiUrl, ensureJson } from "@/lib/apiBase";
 
 /** Pass a Zendesk /api/v2 path (MUST start with /api/v2) */
 export async function zdGet(path) {
@@ -7,6 +7,5 @@ export async function zdGet(path) {
     apiUrl(`/api/zendesk?path=${encodeURIComponent(path)}`),
     { credentials: "include" }
   );
-  await ensureOk(res);
-  return res.json();
+  return ensureJson(res);
 }

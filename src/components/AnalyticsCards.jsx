@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { zdGet } from "@/lib/zendesk";
 
+
 const OPEN_STATES = new Set(["new", "open", "pending", "hold"]);
 const CLOSED_STATES = new Set(["solved", "closed"]);
 
