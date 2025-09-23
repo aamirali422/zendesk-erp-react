@@ -1,5 +1,5 @@
 // api/login.js
-export const config = { runtime: "nodejs20.x" };
+export const config = { runtime: "nodejs" };
 
 import axios from "axios";
 import { setSessionCookie, authHeader } from "./_session.js";

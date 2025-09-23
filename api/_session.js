@@ -1,5 +1,6 @@
 // api/_session.js
-export const config = { runtime: "nodejs20.x" };
+export const config = { runtime: "nodejs" };
+
 
 import { createHash } from "node:crypto";
 
