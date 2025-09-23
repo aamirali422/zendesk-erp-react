@@ -9,15 +9,16 @@ const __dirname = dirname(__filename)
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: { '@': resolve(__dirname, 'src') },
-  },
+  resolve: { alias: { '@': resolve(__dirname, 'src') } },
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:4000', // ← use 127.0.0.1 to avoid ENOTFOUND
+        target: 'http://localhost:4000', // use localhost to match the app origin
         changeOrigin: true,
         secure: false,
+        // these help ensure Set-Cookie makes sense in the browser
+        cookieDomainRewrite: 'localhost',
+        cookiePathRewrite: '/',
       },
     },
   },

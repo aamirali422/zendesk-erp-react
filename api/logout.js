@@ -1,9 +1,8 @@
-// /api/logout.js
-export const config = { runtime: "nodejs20.x" };
+// api/logout.js
+import { clearCookie } from "./_utils/cookies.js";
 
-import { clearSessionCookie } from "./_session.js";
-
-export default async function handler(_req, res) {
-  clearSessionCookie(res);
-  res.json({ ok: true });
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+  clearCookie(res, "zd_session");
+  return res.json({ ok: true });
 }

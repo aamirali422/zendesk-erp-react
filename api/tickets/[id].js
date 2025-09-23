@@ -1,29 +1,33 @@
-import axios from "axios";
-import { getSession, authHeader } from "../_session.js";
+// api/tickets/[id].js
+import { sessionFromReq, zdGetJSON, zdPutJSON } from "../../_utils/zd.js";
 
 export default async function handler(req, res) {
-  const sess = getSession(req, res);
-  if (!sess) return;
+  const session = sessionFromReq(req);
+  if (!session) return res.status(401).json({ error: "Not authenticated" });
 
-  const base = `https://${sess.subdomain}.zendesk.com`;
-  const headers = { Authorization: authHeader(sess.email, sess.apiToken) };
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "Missing id" });
 
-  try {
-    if (req.method === "GET") {
-      const url = `${base}/api/v2/tickets/${req.query.id}.json?include=users,organizations,groups`;
-      const zd = await axios.get(url, { headers });
-      return res.json(zd.data);
+  if (req.method === "GET") {
+    try {
+      const data = await zdGetJSON(session, `/api/v2/tickets/${id}.json?include=users,organizations`);
+      return res.json(data);
+    } catch (e) {
+      return res.status(502).json({ error: e.message || "Zendesk error" });
     }
-
-    if (req.method === "PUT") {
-      const url = `${base}/api/v2/tickets/${req.query.id}.json`;
-      const zd = await axios.put(url, req.body, { headers });
-      return res.json(zd.data);
-    }
-
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  } catch (err) {
-    const status = err?.response?.status || 500;
-    res.status(status).json({ ok: false, error: err?.response?.data || err.message });
   }
+
+  if (req.method === "PUT") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const parsed = JSON.parse(body || "{}");
+    try {
+      const data = await zdPutJSON(session, `/api/v2/tickets/${id}.json`, parsed);
+      return res.json(data);
+    } catch (e) {
+      return res.status(502).json({ error: e.message || "Zendesk error" });
+    }
+  }
+
+  return res.status(405).json({ error: "Method Not Allowed" });
 }
