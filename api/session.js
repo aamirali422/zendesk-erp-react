@@ -1,4 +1,5 @@
 // api/session.js
+
 export default async function handler(req, res) {
   const header = req.headers.cookie || "";
   const match = header.split(";").find(p => p.trim().startsWith("zd_session="));

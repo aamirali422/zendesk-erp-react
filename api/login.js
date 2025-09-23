@@ -1,31 +1,19 @@
 // api/login.js
-export const config = { runtime: "nodejs" };
-
-import axios from "axios";
-import { setSessionCookie, authHeader } from "./_session.js";
+import { setSessionCookie } from "../src/server-lib/cookies.js";
+import { doLogin } from "../src/server-lib/zd.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Method not allowed" });
-
+  if (req.method !== "POST") {
+    res.statusCode = 405;
+    return res.end("Method Not Allowed");
+  }
   try {
-    const email = (req.body?.email || process.env.ZENDESK_EMAIL || "").trim();
-    const token = (req.body?.token || process.env.ZENDESK_TOKEN || "").trim();
-    const subdomain = (req.body?.subdomain || process.env.ZENDESK_SUBDOMAIN || "").trim();
-    if (!email || !token || !subdomain) {
-      return res.status(400).json({ ok: false, error: "Missing email, token, or subdomain." });
-    }
-
-    const base = `https://${subdomain}.zendesk.com`;
-    const me = await axios.get(`${base}/api/v2/users/me.json`, {
-      headers: { Authorization: authHeader(email, token) }
-    });
-
-    if (!me.data?.user) return res.status(401).json({ ok: false, error: "Auth failed" });
-
-    setSessionCookie(req, res, { email, apiToken: token, subdomain });
-    res.json({ ok: true, user: { id: me.data.user.id, name: me.data.user.name, email }, subdomain });
+    const session = await doLogin(req, res);
+    setSessionCookie(res, session);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ ok: true, user: { email: session.email }, subdomain: session.subdomain }));
   } catch (err) {
-    const status = err?.response?.status || 500;
-    res.status(status).json({ ok: false, error: err?.response?.data || err.message });
+    res.statusCode = err.status || 500;
+    res.end(JSON.stringify({ error: err.message || "Login failed" }));
   }
 }

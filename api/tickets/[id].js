@@ -1,33 +1,40 @@
 // api/tickets/[id].js
-import { sessionFromReq, zdGetJSON, zdPutJSON } from "../../_utils/zd.js";
+import { requireSession, zdFetch } from "../../src/server-lib/zd.js";
 
 export default async function handler(req, res) {
-  const session = sessionFromReq(req);
-  if (!session) return res.status(401).json({ error: "Not authenticated" });
+  let id = req.url.split("/api/tickets/")[1] || "";
+  id = id.split("?")[0];
 
-  const id = req.query.id;
-  if (!id) return res.status(400).json({ error: "Missing id" });
+  try {
+    const session = requireSession(req);
 
-  if (req.method === "GET") {
-    try {
-      const data = await zdGetJSON(session, `/api/v2/tickets/${id}.json?include=users,organizations`);
-      return res.json(data);
-    } catch (e) {
-      return res.status(502).json({ error: e.message || "Zendesk error" });
+    if (req.method === "GET") {
+      // include sideloads: users, organizations
+      const data = await zdFetch(session, `/api/v2/tickets/${id}.json?include=users,organizations`);
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify(data));
     }
-  }
 
-  if (req.method === "PUT") {
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    const parsed = JSON.parse(body || "{}");
-    try {
-      const data = await zdPutJSON(session, `/api/v2/tickets/${id}.json`, parsed);
-      return res.json(data);
-    } catch (e) {
-      return res.status(502).json({ error: e.message || "Zendesk error" });
+    if (req.method === "PUT") {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const body = Buffer.concat(chunks).toString("utf8") || "{}";
+      const payload = JSON.parse(body);
+
+      const data = await zdFetch(session, `/api/v2/tickets/${id}.json`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" }
+      });
+
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify(data));
     }
-  }
 
-  return res.status(405).json({ error: "Method Not Allowed" });
+    res.statusCode = 405;
+    res.end("Method Not Allowed");
+  } catch (err) {
+    res.statusCode = err.status || 500;
+    res.end(JSON.stringify({ error: err.message || "Ticket error" }));
+  }
 }

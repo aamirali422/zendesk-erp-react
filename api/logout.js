@@ -1,8 +1,8 @@
 // api/logout.js
-import { clearCookie } from "./_utils/cookies.js";
+import { clearSessionCookie } from "../src/server-lib/cookies.js";
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
-  clearCookie(res, "zd_session");
-  return res.json({ ok: true });
+export default async function handler(_req, res) {
+  clearSessionCookie(res);
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ ok: true }));
 }

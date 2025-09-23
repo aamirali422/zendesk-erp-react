@@ -1,19 +1,23 @@
 // api/tickets/[id]/comments.js
-import { sessionFromReq, zdGetJSON } from "../../../_utils/zd.js";
+import { requireSession, zdFetch } from "../../../src/server-lib/zd.js";
 
 export default async function handler(req, res) {
-  const session = sessionFromReq(req);
-  if (!session) return res.status(401).json({ error: "Not authenticated" });
+  if (req.method !== "GET") {
+    res.statusCode = 405;
+    return res.end("Method Not Allowed");
+  }
 
-  const id = req.query.id;
-  if (!id) return res.status(400).json({ error: "Missing id" });
-
-  if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
+  // path: /api/tickets/{id}/comments
+  const parts = req.url.split("/api/tickets/")[1].split("/");
+  const id = parts[0];
 
   try {
-    const data = await zdGetJSON(session, `/api/v2/tickets/${id}/comments.json?include=users`);
-    return res.json(data);
-  } catch (e) {
-    return res.status(502).json({ error: e.message || "Zendesk error" });
+    const session = requireSession(req);
+    const data = await zdFetch(session, `/api/v2/tickets/${id}/comments.json?include=users`);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(data));
+  } catch (err) {
+    res.statusCode = err.status || 500;
+    res.end(JSON.stringify({ error: err.message || "Comments error" }));
   }
 }

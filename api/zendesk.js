@@ -1,21 +1,19 @@
 // api/zendesk.js
-import { sessionFromReq, zdGetJSON } from "./_utils/zd.js";
+import { proxyZendesk, requireSession } from "../src/server-lib/zd.js";
 
 export default async function handler(req, res) {
-  const session = sessionFromReq(req);
-  if (!session) return res.status(401).json({ error: "Not authenticated" });
-
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.searchParams.get("path") || "";
-
-  if (!path.startsWith("/api/v2")) {
-    return res.status(400).json({ error: "path must start with /api/v2" });
+  const url = new URL(req.url, `https://${req.headers.host}`);
+  const path = url.searchParams.get("path");
+  res.setHeader("Content-Type", "application/json");
+  if (!path) {
+    res.statusCode = 400;
+    return res.end(JSON.stringify({ error: "Missing ?path" }));
   }
-
   try {
-    const data = await zdGetJSON(session, path);
-    return res.json(data);
-  } catch (e) {
-    return res.status(502).json({ error: e.message || "Zendesk error" });
+    const session = requireSession(req);
+    await proxyZendesk(req, res, session, path);
+  } catch (err) {
+    res.statusCode = err.status || 401;
+    res.end(JSON.stringify({ error: err.message || "Unauthorized" }));
   }
 }
