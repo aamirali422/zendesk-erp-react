@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { zdGet } from "@/lib/zendesk";
 
-
 const OPEN_STATES = new Set(["new", "open", "pending", "hold"]);
 const CLOSED_STATES = new Set(["solved", "closed"]);
 
@@ -45,7 +44,7 @@ export default function AnalyticsCards() {
       setErr(null);
 
       try {
-        // 1) Try ALL tickets (matches your list’s default)
+        // 1) Try ALL tickets (matches list default)
         let data = await zdGet("/api/v2/tickets.json?per_page=100");
         let list = Array.isArray(data?.tickets) ? data.tickets : [];
 
@@ -59,19 +58,33 @@ export default function AnalyticsCards() {
         setTickets(list);
       } catch (e) {
         if (!alive) return;
+
+        // If unauthenticated/forbidden/not-acceptable in prod, send to /login
+        const msg = String(e?.message || "");
+        if (msg.includes("HTTP 401") || msg.includes("HTTP 403") || msg.includes("HTTP 406")) {
+          navigate("/login");
+          return;
+        }
+
         setErr("Analytics: could not fetch tickets.");
         setTickets([]);
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [navigate]);
 
   const counts = useMemo(() => {
     if (!tickets.length) return { year: 0, month: 0, week: 0, open: 0, closed: 0 };
 
-    let year = 0, month = 0, week = 0, open = 0, closed = 0;
+    let year = 0,
+      month = 0,
+      week = 0,
+      open = 0,
+      closed = 0;
 
     for (const t of tickets) {
       const status = String(t.status || "").toLowerCase();
@@ -145,11 +158,41 @@ export default function AnalyticsCards() {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-        <Card label="This Year"   value={loading ? "…" : counts.year}   active={currentPeriod === "year"}  onClick={() => goWith({ period: "year" })}  dim={loading} />
-        <Card label="This Month"  value={loading ? "…" : counts.month}  active={currentPeriod === "month"} onClick={() => goWith({ period: "month" })} dim={loading} />
-        <Card label="This Week"   value={loading ? "…" : counts.week}   active={currentPeriod === "week"}  onClick={() => goWith({ period: "week" })}  dim={loading} />
-        <Card label="Open Tickets"   value={loading ? "…" : counts.open}   active={currentStatus === "open"}   onClick={() => goWith({ status: "open" })}   dim={loading} />
-        <Card label="Closed Tickets" value={loading ? "…" : counts.closed} active={currentStatus === "closed"} onClick={() => goWith({ status: "closed" })} dim={loading} />
+        <Card
+          label="This Year"
+          value={loading ? "…" : counts.year}
+          active={currentPeriod === "year"}
+          onClick={() => goWith({ period: "year" })}
+          dim={loading}
+        />
+        <Card
+          label="This Month"
+          value={loading ? "…" : counts.month}
+          active={currentPeriod === "month"}
+          onClick={() => goWith({ period: "month" })}
+          dim={loading}
+        />
+        <Card
+          label="This Week"
+          value={loading ? "…" : counts.week}
+          active={currentPeriod === "week"}
+          onClick={() => goWith({ period: "week" })}
+          dim={loading}
+        />
+        <Card
+          label="Open Tickets"
+          value={loading ? "…" : counts.open}
+          active={currentStatus === "open"}
+          onClick={() => goWith({ status: "open" })}
+          dim={loading}
+        />
+        <Card
+          label="Closed Tickets"
+          value={loading ? "…" : counts.closed}
+          active={currentStatus === "closed"}
+          onClick={() => goWith({ status: "closed" })}
+          dim={loading}
+        />
       </div>
 
       {/* tiny helper so you know what we counted */}

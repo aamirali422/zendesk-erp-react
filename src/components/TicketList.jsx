@@ -1,6 +1,6 @@
 // src/components/TicketList.jsx
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { zdGet } from "@/lib/zendesk";
 
 /** Best-effort mapping from submenu category -> type/tags */
@@ -48,7 +48,6 @@ function pathFromNextPage(fullUrl) {
       const full = u.pathname.slice(idx) + (u.search || "");
       return full || "/api/v2/tickets.json";
     }
-  // eslint-disable-next-line no-unused-vars
   } catch (_e) {
     return null;
   }
@@ -103,11 +102,25 @@ function buildInitialPath(source, orgId, userId) {
   }
 }
 
+/** helper: if error looks like an auth/accept issue, go to /login */
+function shouldRedirectToLogin(err) {
+  const msg = String(err?.message || err || "");
+  return (
+    msg.includes("HTTP 401") ||
+    msg.includes("HTTP 403") ||
+    msg.includes("HTTP 406") ||
+    msg.toLowerCase().includes("unauthorized") ||
+    msg.toLowerCase().includes("forbidden") ||
+    msg.toLowerCase().includes("not acceptable")
+  );
+}
+
 export default function TicketsList({
   onSelectTicket,
   onSelectTicketReadonly,
   category = "",
 }) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Source selector + IDs
@@ -183,7 +196,10 @@ export default function TicketsList({
       setTickets(list);
       setNextPagePath(pathFromNextPage(data.next_page || ""));
     } catch (err) {
-      // Bubble a friendly message
+      if (shouldRedirectToLogin(err)) {
+        navigate("/login");
+        return;
+      }
       const msg =
         err?.message ||
         (typeof err === "string" ? err : null) ||
@@ -210,6 +226,10 @@ export default function TicketsList({
           setTickets((prev) => [...prev, ...list]);
           setNextPagePath(pathFromNextPage(more.next_page || ""));
         } catch (err) {
+          if (shouldRedirectToLogin(err)) {
+            navigate("/login");
+            return;
+          }
           console.error("Load more failed:", err);
           setNextPagePath(null);
         } finally {
@@ -221,7 +241,7 @@ export default function TicketsList({
 
     observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
-  }, [nextPagePath, loadingMore]);
+  }, [nextPagePath, loadingMore, navigate]);
 
   /** Refetch when source/orgId/userId changes */
   useEffect(() => {

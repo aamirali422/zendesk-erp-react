@@ -1,19 +1,16 @@
 // api/zendesk.js
-import { proxyZendesk, requireSession } from "../src/server-lib/zd.js";
+import { proxyZendesk } from "../src/server-lib/zd.js";
 
 export default async function handler(req, res) {
-  const url = new URL(req.url, `https://${req.headers.host}`);
-  const path = url.searchParams.get("path");
-  res.setHeader("Content-Type", "application/json");
-  if (!path) {
-    res.statusCode = 400;
-    return res.end(JSON.stringify({ error: "Missing ?path" }));
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.status(204).end();
+    return;
   }
-  try {
-    const session = requireSession(req);
-    await proxyZendesk(req, res, session, path);
-  } catch (err) {
-    res.statusCode = err.status || 401;
-    res.end(JSON.stringify({ error: err.message || "Unauthorized" }));
+  if (req.method !== "GET") {
+    res.status(405).json({ error: "Method Not Allowed" });
+    return;
   }
+  return proxyZendesk(req, res);
 }
