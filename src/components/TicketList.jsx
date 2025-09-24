@@ -115,6 +115,17 @@ function shouldRedirectToLogin(err) {
   );
 }
 
+/** helper: nicer messages for the banner */
+function friendlyApiError(err) {
+  const raw = String(err?.message || err || "");
+  if (raw.includes("HTTP 401")) return "Not signed in. Please login again.";
+  if (raw.includes("HTTP 403")) return "Forbidden. Check Zendesk token permissions.";
+  if (raw.includes("HTTP 406")) return "Not acceptable. Try again later.";
+  if (raw.includes("HTTP 400")) return "Bad request to the proxy. Check deployment.";
+  if (raw.includes("HTTP 500")) return "Server error (proxy). See /api/debug and logs.";
+  return raw || "Request failed.";
+}
+
 export default function TicketsList({
   onSelectTicket,
   onSelectTicketReadonly,
@@ -200,10 +211,7 @@ export default function TicketsList({
         navigate("/login");
         return;
       }
-      const msg =
-        err?.message ||
-        (typeof err === "string" ? err : null) ||
-        "Failed to fetch tickets from Zendesk.";
+      const msg = friendlyApiError(err);
       setError(msg);
       console.error("Zendesk fetch failed:", err);
     } finally {

@@ -1,19 +1,39 @@
 // api/login.js
-import { setSessionCookie } from "../src/server-lib/cookies.js";
-import { doLogin } from "../src/server-lib/zd.js";
-
-export default async function handler(req, res) {
+// POST { email, token, subdomain } -> sets HttpOnly cookie "zd"
+module.exports = async (req, res) => {
   if (req.method !== "POST") {
-    res.statusCode = 405;
-    return res.end("Method Not Allowed");
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method Not Allowed" });
   }
+
   try {
-    const session = await doLogin(req, res);
-    setSessionCookie(res, session);
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: true, user: { email: session.email }, subdomain: session.subdomain }));
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+
+    const email = String(body.email || process.env.ZENDESK_EMAIL || "").trim();
+    const token = String(body.token || process.env.ZENDESK_TOKEN || "").trim();
+    const subdomain = String(body.subdomain || process.env.ZENDESK_SUBDOMAIN || "").trim();
+
+    if (!email || !token || !subdomain) {
+      return res.status(400).json({ error: "Missing Zendesk credentials." });
+    }
+
+    const cookieValue = encodeURIComponent(JSON.stringify({ email, token, subdomain }));
+    const isProd = process.env.VERCEL === "1";
+    // For local: SameSite=Lax; Secure only in prod (HTTPS)
+    const cookie = [
+      `zd=${cookieValue}`,
+      "Path=/",
+      "HttpOnly",
+      isProd ? "Secure; SameSite=None" : "SameSite=Lax",
+      "Max-Age=86400"
+    ].join("; ");
+
+    res.setHeader("Set-Cookie", cookie);
+    return res.status(200).json({ ok: true, user: { email }, subdomain });
   } catch (err) {
-    res.statusCode = err.status || 500;
-    res.end(JSON.stringify({ error: err.message || "Login failed" }));
+    console.error("api/login error:", err);
+    return res.status(500).json({ error: "Login error", detail: err?.message || String(err) });
   }
-}
+};
