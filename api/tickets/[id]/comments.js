@@ -1,32 +1,51 @@
-import { readSession } from "../../../_utils/session.js";
-
+// api/tickets/[id]/comments.js
 export default async function handler(req, res) {
-  const s = readSession(req);
-  if (!s) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-
-  const { id } = req.query;
-  if (!id) {
-    res.status(400).json({ error: "Missing ticket id" });
-    return;
-  }
-
-  const url = `https://${s.subdomain}.zendesk.com/api/v2/tickets/${encodeURIComponent(id)}/comments.json?include=users`;
-  const auth = Buffer.from(`${s.email}/token:${s.token}`, "utf8").toString("base64");
-
   try {
-    const r = await fetch(url, {
-      headers: {
-        "Authorization": `Basic ${auth}`,
-        "Accept": "application/json"
-      }
-    });
-    const data = await r.json();
-    res.status(r.status).json(data);
+    const { ZENDESK_EMAIL, ZENDESK_TOKEN, ZENDESK_SUBDOMAIN } = process.env;
+    if (!ZENDESK_EMAIL || !ZENDESK_TOKEN || !ZENDESK_SUBDOMAIN) {
+      return res.status(500).json({ error: "Zendesk env vars missing" });
+    }
+
+    const { id } = req.query;
+    const base = `https://${ZENDESK_SUBDOMAIN}.zendesk.com/api/v2`;
+    const auth = Buffer.from(`${ZENDESK_EMAIL}/token:${ZENDESK_TOKEN}`).toString("base64");
+    const headers = { Authorization: `Basic ${auth}`, "Content-Type": "application/json" };
+
+    if (req.method === "GET") {
+      const r = await fetch(`${base}/tickets/${id}/comments.json?include=users`, { headers });
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json(data);
+      return res.status(200).json({
+        comments: data.comments || [],
+        users: data.users || [],
+      });
+    }
+
+    if (req.method === "POST") {
+      // expect JSON: { body, html_body, isPublic }
+      const payload = await req.json();
+      const comment = {
+        ticket: {
+          comment: {
+            body: payload.body || "",
+            html_body: payload.html_body || null,
+            public: !!payload.isPublic,
+          },
+        },
+      };
+      const r = await fetch(`${base}/tickets/${id}.json`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(comment),
+      });
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json(data);
+      return res.status(200).json({ ok: true, ticket: data.ticket });
+    }
+
+    return res.status(405).json({ error: "Method Not Allowed" });
   } catch (e) {
-    console.error("comments list error:", e);
-    res.status(500).json({ error: "Comments fetch failed" });
+    console.error("tickets/[id]/comments error:", e);
+    res.status(500).json({ error: e.message || "Server error" });
   }
 }

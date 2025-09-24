@@ -26,6 +26,7 @@ export default function TicketDetail({ ticket, onBack }) {
   const [zdTicket, setZdTicket] = useState(null);
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   // cache sideloaded users/orgs
   const [ticketUsers, setTicketUsers] = useState([]);
@@ -73,6 +74,8 @@ export default function TicketDetail({ ticket, onBack }) {
     (async () => {
       try {
         setLoading(true);
+        setLoadError("");
+
         const t = await getTicket(ticket.id);
         const c = await listComments(ticket.id);
 
@@ -89,6 +92,9 @@ export default function TicketDetail({ ticket, onBack }) {
         setPriority(t.ticket.priority || "Normal");
         setStatus(t.ticket.status || "open");
         setTags(t.ticket.tags || []);
+      } catch (e) {
+        console.error(e);
+        setLoadError(e?.message || "Failed to load ticket");
       } finally {
         setLoading(false);
       }
@@ -207,6 +213,13 @@ export default function TicketDetail({ ticket, onBack }) {
       </div>
     );
   }
+  if (loadError) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+        {loadError}
+      </div>
+    );
+  }
 
   const erp = getMockErpFromTicket(ticket);
 
@@ -225,7 +238,8 @@ export default function TicketDetail({ ticket, onBack }) {
                 ← Back to Tickets
               </button>
               <h3 className="text-lg font-semibold">
-                Ticket #{ticket.id} — {ticket.subject}
+                {/* prefer live subject if present */}
+                Ticket #{ticket.id} — {zdTicket?.subject ?? ticket.subject}
               </h3>
             </div>
             <button

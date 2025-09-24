@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { zdGet } from "@/lib/zendesk";
 
-const OPEN_STATES = new Set(["new", "open", "pending", "hold"]);
-const CLOSED_STATES = new Set(["solved", "closed"]);
+// Exact Zendesk status keys we want to report
+const STATUS_KEYS = ["new", "open", "pending", "on_hold", "solved", "closed"];
 
 function withinPeriod(dateStr, period) {
   const d = new Date(dateStr);
@@ -78,13 +78,13 @@ export default function AnalyticsCards() {
   }, [navigate]);
 
   const counts = useMemo(() => {
-    if (!tickets.length) return { year: 0, month: 0, week: 0, open: 0, closed: 0 };
+    // Initialize all status counters at 0
+    const statusCounts = STATUS_KEYS.reduce((acc, k) => {
+      acc[k] = 0;
+      return acc;
+    }, {});
 
-    let year = 0,
-      month = 0,
-      week = 0,
-      open = 0,
-      closed = 0;
+    let year = 0, month = 0, week = 0;
 
     for (const t of tickets) {
       const status = String(t.status || "").toLowerCase();
@@ -94,10 +94,12 @@ export default function AnalyticsCards() {
       if (withinPeriod(created, "month")) month++;
       if (withinPeriod(created, "week")) week++;
 
-      if (OPEN_STATES.has(status)) open++;
-      if (CLOSED_STATES.has(status)) closed++;
+      if (statusCounts[status] !== undefined) {
+        statusCounts[status] += 1;
+      }
     }
-    return { year, month, week, open, closed };
+
+    return { year, month, week, ...statusCounts };
   }, [tickets]);
 
   const goWith = (opts) => {
@@ -157,7 +159,8 @@ export default function AnalyticsCards() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+      {/* First row: time buckets */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-3 mb-3">
         <Card
           label="This Year"
           value={loading ? "…" : counts.year}
@@ -179,15 +182,47 @@ export default function AnalyticsCards() {
           onClick={() => goWith({ period: "week" })}
           dim={loading}
         />
+      </div>
+
+      {/* Second row: status buckets */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
         <Card
-          label="Open Tickets"
+          label="New"
+          value={loading ? "…" : counts.new}
+          active={currentStatus === "new"}
+          onClick={() => goWith({ status: "new" })}
+          dim={loading}
+        />
+        <Card
+          label="Open"
           value={loading ? "…" : counts.open}
           active={currentStatus === "open"}
           onClick={() => goWith({ status: "open" })}
           dim={loading}
         />
         <Card
-          label="Closed Tickets"
+          label="Pending"
+          value={loading ? "…" : counts.pending}
+          active={currentStatus === "pending"}
+          onClick={() => goWith({ status: "pending" })}
+          dim={loading}
+        />
+        <Card
+          label="On Hold"
+          value={loading ? "…" : counts.on_hold}
+          active={currentStatus === "on_hold"}
+          onClick={() => goWith({ status: "on_hold" })}
+          dim={loading}
+        />
+        <Card
+          label="Solved"
+          value={loading ? "…" : counts.solved}
+          active={currentStatus === "solved"}
+          onClick={() => goWith({ status: "solved" })}
+          dim={loading}
+        />
+        <Card
+          label="Closed"
           value={loading ? "…" : counts.closed}
           active={currentStatus === "closed"}
           onClick={() => goWith({ status: "closed" })}
@@ -195,7 +230,6 @@ export default function AnalyticsCards() {
         />
       </div>
 
-      {/* tiny helper so you know what we counted */}
       <p className="mt-2 text-xs text-gray-500">
         {loading ? "Loading…" : `Counting ${tickets.length} ticket(s).`}
       </p>

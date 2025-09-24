@@ -5,19 +5,23 @@ import { FiMenu } from "react-icons/fi";
 
 import Sidebar from "../components/Sidebar";
 import AnalyticsCards from "../components/AnalyticsCards";
-import TicketList from "../components/TicketList";    // ensure file is src/components/TicketList.jsx
+import TicketList from "../components/TicketList";            // ensure: src/components/TicketList.jsx
 import TicketDetail from "../components/TicketDetail";
-import ReadonlyTicketDetail from "../components/ReadonlyTicketDetail";
+import ReadonlyTicketDetailContainer from "../components/ReadonlyTicketDetailContainer"; // << use container
 import ProductsList from "../components/ProductsList";
 import OrdersTable from "../components/OrdersTable";
 import BackupRestore from "../components/BackupRestore";
 
 export default function Dashboard() {
-  const [view, setView] = useState("tickets");          // 'tickets' | 'products' | 'orders' | 'backup' | 'readonly-ticket'
+  // 'tickets' | 'products' | 'orders' | 'backup' | 'readonly-ticket'
+  const [view, setView] = useState("tickets");
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const [ticketCategory, setTicketCategory] = useState(""); // 'tech-help' | 'data-recovery' | 'warranty-claim' | 'general-support' | ''
+
+  // 'tech-help' | 'data-recovery' | 'warranty-claim' | 'general-support' | ''
+  const [ticketCategory, setTicketCategory] = useState("");
+
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [backupMode, setBackupMode] = useState("");     // '' | 'create' | 'restore'
+  const [backupMode, setBackupMode] = useState(""); // '' | 'create' | 'restore'
 
   const navigate = useNavigate();
 
@@ -35,7 +39,7 @@ export default function Dashboard() {
     }
   };
 
-  // Enrich a ticket so both detail views have nice data
+  // Enrich a ticket so both detail views have nice data immediately (UI fallbacks)
   const enrichTicket = (t) => {
     if (!t) return t;
     const n = Number(String(t.id).slice(-2));
@@ -129,7 +133,7 @@ export default function Dashboard() {
     setView("tickets"); // TicketDetail renders when selectedTicket is set
   };
 
-  // From Backup/Restore: open read-only detail
+  // From Backup/Restore (or list): open read-only detail via the **container**
   const openReadonlyTicket = (t) => {
     setSelectedTicket(enrichTicket(t));
     setView("readonly-ticket");
@@ -176,8 +180,8 @@ export default function Dashboard() {
             <div className="bg-white rounded-lg shadow-md">
               <TicketList
                 category={ticketCategory}
-                onSelectTicket={openEditableTicket}        // editable TicketDetail
-                onSelectTicketReadonly={openReadonlyTicket} // optional 2nd View for read-only
+                onSelectTicket={openEditableTicket}           // editable TicketDetail
+                onSelectTicketReadonly={openReadonlyTicket}   // optional 2nd View for read-only
               />
             </div>
           </div>
@@ -208,15 +212,15 @@ export default function Dashboard() {
         {/* Backup & Restore */}
         {view === "backup" && (
           <BackupRestore
-            mode={backupMode}           // '' | 'create' | 'restore'
-            onView={openReadonlyTicket} // View inside BackupRestore → Readonly detail
+            mode={backupMode}            // '' | 'create' | 'restore'
+            onView={openReadonlyTicket}  // View inside BackupRestore → Readonly detail
           />
         )}
 
-        {/* Read-only ticket detail (from Backup → Restore) */}
+        {/* Read-only ticket detail (uses the CONTAINER that fetches data) */}
         {view === "readonly-ticket" && selectedTicket && (
-          <ReadonlyTicketDetail
-            ticket={selectedTicket}
+          <ReadonlyTicketDetailContainer
+            baseTicket={selectedTicket}   // << pass the selected ticket as baseTicket
             onBack={backToBackupRestore}
           />
         )}

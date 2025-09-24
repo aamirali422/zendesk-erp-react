@@ -36,17 +36,25 @@ export async function updateTicket(id, ticketPatch) {
   return ensureJson(res);
 }
 
+/**
+ * For production on Vercel, we send JSON (no multipart).
+ * Attachments are not supported by the current server handler.
+ */
 export async function postComment({ id, body, html_body, isPublic = true, files = [] }) {
-  const fd = new FormData();
-  if (html_body) fd.append("html_body", html_body);
-  fd.append("body", body || "Attachment(s) uploaded.");
-  fd.append("isPublic", String(!!isPublic));
-  for (const f of files) fd.append("files", f);
+  if (files && files.length > 0) {
+    // You can swap this for a real upload flow later (Zendesk uploads API)
+    throw new Error("File attachments are not supported on the current deployment.");
+  }
 
   const res = await fetch(apiUrl(`/api/tickets/${id}/comment`), {
     method: "POST",
     credentials: "include",
-    body: fd,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      body: body || "Attachment(s) uploaded.",
+      html_body,
+      isPublic: !!isPublic,
+    }),
   });
   return ensureJson(res);
 }
