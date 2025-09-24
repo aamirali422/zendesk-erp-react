@@ -1,30 +1,36 @@
-// api/_utils/cookies.js
-function serializeCookie(name, value, opts = {}) {
-  const enc = encodeURIComponent;
-  let cookie = `${name}=${enc(value)}`;
+// ESM helpers to parse & serialize cookies without external deps
 
-  if (opts.maxAge != null) cookie += `; Max-Age=${Math.floor(opts.maxAge)}`;
-  if (opts.domain) cookie += `; Domain=${opts.domain}`;
-  cookie += `; Path=${opts.path || "/"}`;
-  if (opts.expires) cookie += `; Expires=${opts.expires.toUTCString()}`;
-  if (opts.httpOnly) cookie += `; HttpOnly`;
-  if (opts.secure) cookie += `; Secure`;
-  if (opts.sameSite) cookie += `; SameSite=${opts.sameSite || "Lax"}`;
-  return cookie;
-}
-
-function parseCookies(req) {
-  const h = req.headers.cookie || "";
+export function parseCookies(req) {
+  const header = req.headers.cookie || "";
   const out = {};
-  h.split(";").forEach((p) => {
-    const idx = p.indexOf("=");
-    if (idx > -1) {
-      const k = p.slice(0, idx).trim();
-      const v = p.slice(idx + 1).trim();
-      out[k] = decodeURIComponent(v);
-    }
+  header.split(/; */).forEach((pair) => {
+    if (!pair) return;
+    const idx = pair.indexOf("=");
+    const key = decodeURIComponent(pair.substring(0, idx).trim());
+    const val = decodeURIComponent(pair.substring(idx + 1).trim());
+    if (key) out[key] = val;
   });
   return out;
 }
 
-module.exports = { serializeCookie, parseCookies };
+export function serializeCookie(name, value, options = {}) {
+  const opt = {
+    path: "/",
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: true,
+    ...options,
+  };
+
+  let cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
+
+  if (opt.maxAge != null) cookie += `; Max-Age=${Math.floor(opt.maxAge)}`;
+  if (opt.domain) cookie += `; Domain=${opt.domain}`;
+  if (opt.path) cookie += `; Path=${opt.path}`;
+  if (opt.expires) cookie += `; Expires=${opt.expires.toUTCString()}`;
+  if (opt.httpOnly) cookie += `; HttpOnly`;
+  if (opt.secure) cookie += `; Secure`;
+  if (opt.sameSite) cookie += `; SameSite=${opt.sameSite}`;
+
+  return cookie;
+}

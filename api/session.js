@@ -1,8 +1,14 @@
-// api/session.js
-const { readSession } = require("./_utils/session");
+import { readSession } from "./_utils/session.js";
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   const s = readSession(req);
-  if (!s) return res.status(401).json({ error: "No session" });
-  return res.status(200).json({ ok: true, subdomain: s.subdomain, email: s.email });
-};
+  if (!s) {
+    res.status(401).json({ error: "No active session" });
+    return;
+  }
+  res.status(200).json({
+    email: s.email,
+    subdomain: s.subdomain,
+    ok: true,
+  });
+}

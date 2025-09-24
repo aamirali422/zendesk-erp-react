@@ -1,30 +1,32 @@
-// api/tickets/[id]/comments.js
-const { readSession, getZendeskAuthHeader } = require("../../_utils/session");
+import { readSession } from "../../../_utils/session.js";
 
-module.exports = async (req, res) => {
-  try {
-    if (req.method !== "GET") {
-      res.setHeader("Allow", "GET");
-      return res.status(405).json({ error: "Method Not Allowed" });
-    }
-    const session = readSession(req);
-    if (!session) return res.status(401).json({ error: "Unauthorized" });
-
-    const { id } = req.query;
-    const base = `https://${session.subdomain}.zendesk.com`;
-    const auth = getZendeskAuthHeader(session);
-
-    const r = await fetch(`${base}/api/v2/tickets/${id}/comments.json?include=users`, {
-      headers: { Authorization: auth, Accept: "application/json" },
-    });
-    if (!r.ok) {
-      const t = await r.text().catch(() => "");
-      return res.status(r.status).json({ error: "Zendesk comments failed", detail: t });
-    }
-    const data = await r.json();
-    return res.status(200).json(data);
-  } catch (e) {
-    console.error("COMMENTS 500:", e);
-    return res.status(500).json({ error: "Comments endpoint failed", detail: String(e?.message || e) });
+export default async function handler(req, res) {
+  const s = readSession(req);
+  if (!s) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
-};
+
+  const { id } = req.query;
+  if (!id) {
+    res.status(400).json({ error: "Missing ticket id" });
+    return;
+  }
+
+  const url = `https://${s.subdomain}.zendesk.com/api/v2/tickets/${encodeURIComponent(id)}/comments.json?include=users`;
+  const auth = Buffer.from(`${s.email}/token:${s.token}`, "utf8").toString("base64");
+
+  try {
+    const r = await fetch(url, {
+      headers: {
+        "Authorization": `Basic ${auth}`,
+        "Accept": "application/json"
+      }
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (e) {
+    console.error("comments list error:", e);
+    res.status(500).json({ error: "Comments fetch failed" });
+  }
+}

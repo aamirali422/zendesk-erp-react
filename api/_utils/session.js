@@ -1,28 +1,37 @@
-// api/_utils/session.js
-const { parseCookies } = require("./cookies");
+import { parseCookies, serializeCookie } from "./cookies.js";
 
-function readSession(req) {
-  const cookies = parseCookies(req);
-  const raw = cookies["zd_session"];
-  if (!raw) return null;
+const COOKIE_NAME = "zd_session";
+// 7 days
+const MAX_AGE = 7 * 24 * 60 * 60;
 
+export function readSession(req) {
   try {
-    const json = Buffer.from(raw, "base64").toString("utf8");
-    const parsed = JSON.parse(json);
-    const email = String(parsed.email || "").trim();
-    const token = String(parsed.token || "").trim();
-    const subdomain = String(parsed.subdomain || "").trim();
-    if (!email || !token || !subdomain) return null;
-    return { email, token, subdomain };
+    const cookies = parseCookies(req);
+    const raw = cookies[COOKIE_NAME];
+    if (!raw) return null;
+    const json = Buffer.from(raw, "base64url").toString("utf8");
+    const data = JSON.parse(json);
+    if (!data?.email || !data?.token || !data?.subdomain) return null;
+    return data;
   } catch {
     return null;
   }
 }
 
-function getZendeskAuthHeader(session) {
-  const { email, token } = session;
-  const base = Buffer.from(`${email}/token:${token}`).toString("base64");
-  return `Basic ${base}`;
+export function writeSession(res, { email, token, subdomain }) {
+  const payload = { email, token, subdomain };
+  const raw = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const cookie = serializeCookie(COOKIE_NAME, raw, {
+    maxAge: MAX_AGE,
+    // `secure` set in serializer, SameSite=Lax
+  });
+  res.setHeader("Set-Cookie", cookie);
 }
 
-module.exports = { readSession, getZendeskAuthHeader };
+export function clearSession(res) {
+  const cookie = serializeCookie(COOKIE_NAME, "", {
+    maxAge: 0,
+    expires: new Date(0),
+  });
+  res.setHeader("Set-Cookie", cookie);
+}
