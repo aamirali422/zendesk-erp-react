@@ -1,17 +1,17 @@
 // src/pages/LoginPage.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login } from "@/lib/zdClient"; // <-- use the helper (handles apiUrl + ensureOk)
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
-  // Prefilled for dev only. Remove/clear for production.
+  // Prefilled for dev; clear for prod if you want
   const [formData, setFormData] = useState({
     email: "alex@codered-tech.com",
     token: "wwq0RELx5qj2ZxyFdocyMMdjaxTER6QL1ds0hGAZ",
     subdomain: "software-6493",
-    erpBaseUrl: "https://erp.angelbird.example",
   });
 
   const [loading, setLoading] = useState(false);
@@ -26,17 +26,11 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { email, token, subdomain } = formData;
-      const resp = await login({
+      await login({
         email: email.trim(),
         token: token.trim(),
         subdomain: subdomain.trim(),
       });
-
-      // Optional: store small hints for UX
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("zdUser", JSON.stringify(resp.user));
-      localStorage.setItem("zdSubdomain", resp.subdomain);
-
       navigate("/dashboard");
     } catch (e2) {
       setErr(e2?.message || "Login failed");
@@ -108,19 +102,6 @@ export default function LoginPage() {
             <p className="mt-1 text-xs text-gray-500">
               API base: https://<b>{formData.subdomain || "your-subdomain"}</b>.zendesk.com/api/v2
             </p>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              ERP Base URL (optional)
-            </label>
-            <input
-              type="url"
-              name="erpBaseUrl"
-              value={formData.erpBaseUrl}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
-            />
           </div>
 
           <button

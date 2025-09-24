@@ -5,18 +5,27 @@ export function apiUrl(path) {
 }
 
 export async function ensureJson(res) {
+  // If not OK, try to extract an error body (json → text → status)
   if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
     try {
       const data = await res.clone().json();
-      detail = data?.error || data?.message || detail;
+      const detail = data?.error || data?.message || JSON.stringify(data);
+      throw new Error(detail || `HTTP ${res.status}`);
     } catch {
       try {
         const txt = await res.clone().text();
-        if (txt) detail = txt;
-      } catch {}
+        throw new Error(txt || `HTTP ${res.status}`);
+      } catch {
+        throw new Error(`HTTP ${res.status}`);
+      }
     }
-    throw new Error(detail);
   }
-  return res.json();
+
+  // If OK but body isn’t JSON (e.g. HTML), downgrade cleanly
+  try {
+    return await res.json();
+  } catch {
+    const text = await res.text();
+    throw new Error(`Expected JSON but got: ${text.slice(0, 200)}…`);
+  }
 }

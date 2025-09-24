@@ -1,44 +1,34 @@
 // api/tickets/[id].js
+import { apiBase, basicAuthHeader } from "../../_utils/zendesk.js";
+
 export default async function handler(req, res) {
   try {
-    if (req.method !== "GET" && req.method !== "PUT") {
-      return res.status(405).json({ error: "Method Not Allowed" });
-    }
-
-    const { ZENDESK_EMAIL, ZENDESK_TOKEN, ZENDESK_SUBDOMAIN } = process.env;
-    if (!ZENDESK_EMAIL || !ZENDESK_TOKEN || !ZENDESK_SUBDOMAIN) {
-      return res.status(500).json({ error: "Zendesk env vars missing" });
-    }
-
     const { id } = req.query;
-    const base = `https://${ZENDESK_SUBDOMAIN}.zendesk.com/api/v2`;
-
-    const auth = Buffer.from(`${ZENDESK_EMAIL}/token:${ZENDESK_TOKEN}`).toString("base64");
-    const headers = { Authorization: `Basic ${auth}`, "Content-Type": "application/json" };
+    if (!id) return res.status(400).json({ error: "Missing id" });
 
     if (req.method === "GET") {
-      const r = await fetch(`${base}/tickets/${id}.json?include=users,organizations`, { headers });
-      const data = await r.json();
-      if (!r.ok) return res.status(r.status).json(data);
-      return res.status(200).json({
-        ticket: data.ticket,
-        users: data.users || [],
-        organizations: data.organizations || [],
-      });
+      // include users & orgs via side-loading
+      const url = `${apiBase()}/tickets/${id}.json?include=users,organizations`;
+      const r = await fetch(url, { headers: { ...basicAuthHeader() } });
+      const text = await r.text();
+      try { return res.status(r.status).json(JSON.parse(text)); }
+      catch { return res.status(r.status).send(text); }
     }
 
-    // PUT: update ticket fields
-    const body = await req.json();
-    const r = await fetch(`${base}/tickets/${id}.json`, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify(body),
-    });
-    const data = await r.json();
-    if (!r.ok) return res.status(r.status).json(data);
-    return res.status(200).json(data);
+    if (req.method === "PUT") {
+      const url = `${apiBase()}/tickets/${id}.json`;
+      const r = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...basicAuthHeader() },
+        body: JSON.stringify(req.body || {}),
+      });
+      const text = await r.text();
+      try { return res.status(r.status).json(JSON.parse(text)); }
+      catch { return res.status(r.status).send(text); }
+    }
+
+    return res.status(405).json({ error: "Method Not Allowed" });
   } catch (e) {
-    console.error("tickets/[id] error:", e);
-    res.status(500).json({ error: e.message || "Server error" });
+    return res.status(500).json({ error: e.message || "Ticket error" });
   }
 }

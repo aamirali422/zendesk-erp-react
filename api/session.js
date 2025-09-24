@@ -1,14 +1,20 @@
-import { readSession } from "./_utils/session.js";
-
+// api/session.js
 export default async function handler(req, res) {
-  const s = readSession(req);
-  if (!s) {
-    res.status(401).json({ error: "No active session" });
-    return;
+  try {
+    const cookie = req.headers.cookie || "";
+    const loggedIn = cookie.includes("sid=ok");
+
+    if (loggedIn) {
+      return res.json({
+        ok: true,
+        subdomain: process.env.ZENDESK_SUBDOMAIN || "",
+        user: { email: "agent@example.com" },
+      });
+    }
+
+    return res.status(401).json({ ok: false, error: "Not logged in" });
+  } catch (e) {
+    console.error("Session error:", e);
+    return res.status(500).json({ error: e.message || "Session check failed" });
   }
-  res.status(200).json({
-    email: s.email,
-    subdomain: s.subdomain,
-    ok: true,
-  });
 }

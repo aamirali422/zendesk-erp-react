@@ -5,41 +5,33 @@ import { FiMenu } from "react-icons/fi";
 
 import Sidebar from "../components/Sidebar";
 import AnalyticsCards from "../components/AnalyticsCards";
-import TicketList from "../components/TicketList";            // ensure: src/components/TicketList.jsx
+import TicketList from "../components/TicketList";
 import TicketDetail from "../components/TicketDetail";
-import ReadonlyTicketDetailContainer from "../components/ReadonlyTicketDetailContainer"; // << use container
+import ReadonlyTicketDetail from "../components/ReadonlyTicketDetail";
 import ProductsList from "../components/ProductsList";
 import OrdersTable from "../components/OrdersTable";
 import BackupRestore from "../components/BackupRestore";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Dashboard() {
-  // 'tickets' | 'products' | 'orders' | 'backup' | 'readonly-ticket'
+  // views: 'tickets' | 'products' | 'orders' | 'backup' | 'readonly-ticket'
   const [view, setView] = useState("tickets");
   const [selectedTicket, setSelectedTicket] = useState(null);
 
+  // ticket subcategory (for TicketList)
   // 'tech-help' | 'data-recovery' | 'warranty-claim' | 'general-support' | ''
   const [ticketCategory, setTicketCategory] = useState("");
 
+  // backup subview: '' | 'create' | 'restore'
+  const [backupMode, setBackupMode] = useState("");
+
+  // sidebar
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [backupMode, setBackupMode] = useState(""); // '' | 'create' | 'restore'
 
   const navigate = useNavigate();
+  const { logout } = useAuth(); // server logout via /api/logout + client state clear
 
-  // Server-side logout + local cleanup
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/logout", { method: "POST", credentials: "include" });
-    } catch (err) {
-      console.error("Logout failed:", err);
-    } finally {
-      localStorage.removeItem("isLoggedIn");
-      localStorage.removeItem("zdUser");
-      localStorage.removeItem("zdSubdomain");
-      navigate("/login");
-    }
-  };
-
-  // Enrich a ticket so both detail views have nice data immediately (UI fallbacks)
+  // Add friendly ERP + sample messages so both detail views have something consistent
   const enrichTicket = (t) => {
     if (!t) return t;
     const n = Number(String(t.id).slice(-2));
@@ -55,7 +47,11 @@ export default function Dashboard() {
         t.messages ??
         [
           { from: "Customer", time: "Yesterday 19:29", text: "Hello, I need help with my order." },
-          { from: "Agent", time: "Today 10:05", text: "Thanks! Could you share your order ID so I can check ERP status?" },
+          {
+            from: "Agent",
+            time: "Today 10:05",
+            text: "Thanks! Could you share your order ID so I can check ERP status?",
+          },
         ],
       erp:
         t.erp ??
@@ -73,14 +69,21 @@ export default function Dashboard() {
           totals: { subtotal: "€199.00", shipping: "€10.00", total: "€209.00" },
           shipments:
             erpStatus === "Shipped"
-              ? [{ id: `SHP-${2100 + (n % 90)}`, carrier: "DHL", tracking: "DHL123456789", eta: "3–5 days" }]
+              ? [
+                  {
+                    id: `SHP-${2100 + (n % 90)}`,
+                    carrier: "DHL",
+                    tracking: "DHL123456789",
+                    eta: "3–5 days",
+                  },
+                ]
               : [],
           invoices: [{ id: `INV-${3100 + (n % 120)}`, amount: "€209.00" }],
         },
     };
   };
 
-  // Sidebar selections
+  // Sidebar menu selections
   const handleSelect = (key) => {
     setSidebarOpen(false);
 
@@ -102,7 +105,7 @@ export default function Dashboard() {
       return;
     }
 
-    // Backup & Restore (collapsible group)
+    // Backup group
     if (key.startsWith("backup:")) {
       const mode = key.split(":")[1]; // 'create' | 'restore'
       setView("backup");
@@ -114,26 +117,26 @@ export default function Dashboard() {
 
     if (key === "backup") {
       setView("backup");
-      setBackupMode(""); // landing state
+      setBackupMode(""); // landing
       setSelectedTicket(null);
       setTicketCategory("");
       return;
     }
 
-    // Other sections
-    setView(key); // 'products' | 'orders'
+    // Other sections (products, orders)
+    setView(key);
     setSelectedTicket(null);
     setTicketCategory("");
     setBackupMode("");
   };
 
-  // From Tickets list: open editable detail (communicate)
+  // From TicketList → open editable detail (TicketDetail)
   const openEditableTicket = (t) => {
     setSelectedTicket(enrichTicket(t));
     setView("tickets"); // TicketDetail renders when selectedTicket is set
   };
 
-  // From Backup/Restore (or list): open read-only detail via the **container**
+  // From Backup/Restore → open read-only ticket (ReadonlyTicketDetail)
   const openReadonlyTicket = (t) => {
     setSelectedTicket(enrichTicket(t));
     setView("readonly-ticket");
@@ -150,7 +153,7 @@ export default function Dashboard() {
       {/* Sidebar */}
       <Sidebar
         onSelect={handleSelect}
-        onLogout={handleLogout}
+        onLogout={logout}
         isOpen={isSidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
@@ -173,15 +176,15 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Tickets view */}
+        {/* Tickets view (list) */}
         {view === "tickets" && !selectedTicket && (
           <div className="space-y-4">
             <AnalyticsCards />
             <div className="bg-white rounded-lg shadow-md">
               <TicketList
                 category={ticketCategory}
-                onSelectTicket={openEditableTicket}           // editable TicketDetail
-                onSelectTicketReadonly={openReadonlyTicket}   // optional 2nd View for read-only
+                onSelectTicket={openEditableTicket} // editable TicketDetail
+                onSelectTicketReadonly={openReadonlyTicket} // optional read-only open
               />
             </div>
           </div>
@@ -212,15 +215,15 @@ export default function Dashboard() {
         {/* Backup & Restore */}
         {view === "backup" && (
           <BackupRestore
-            mode={backupMode}            // '' | 'create' | 'restore'
-            onView={openReadonlyTicket}  // View inside BackupRestore → Readonly detail
+            mode={backupMode} // '' | 'create' | 'restore'
+            onView={openReadonlyTicket}
           />
         )}
 
-        {/* Read-only ticket detail (uses the CONTAINER that fetches data) */}
+        {/* Read-only ticket detail (from Backup → Restore) */}
         {view === "readonly-ticket" && selectedTicket && (
-          <ReadonlyTicketDetailContainer
-            baseTicket={selectedTicket}   // << pass the selected ticket as baseTicket
+          <ReadonlyTicketDetail
+            ticket={selectedTicket}
             onBack={backToBackupRestore}
           />
         )}

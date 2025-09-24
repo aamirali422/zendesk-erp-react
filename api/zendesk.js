@@ -1,42 +1,22 @@
-import { readSession } from "./_utils/session.js";
+// api/zendesk.js
+import { apiBase, basicAuthHeader } from "./_utils/zendesk.js";
 
-// Simple Zendesk proxy: /api/zendesk?path=/api/v2/...
 export default async function handler(req, res) {
   try {
-    const s = readSession(req);
-    if (!s) {
-      res.status(401).json({ error: "Unauthorized: no session" });
-      return;
-    }
+    if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
+    const path = req.query.path;
+    if (!path || !String(path).startsWith("/api/v2"))
+      return res.status(400).json({ error: "Missing or invalid path" });
 
-    const path = String(req.query.path || "");
-    if (!path.startsWith("/api/v2")) {
-      res.status(400).json({ error: "Bad Request: path must start with /api/v2" });
-      return;
-    }
-
-    const url = `https://${s.subdomain}.zendesk.com${path}`;
-    const auth = Buffer.from(`${s.email}/token:${s.token}`, "utf8").toString("base64");
-
-    const upstream = await fetch(url, {
-      headers: {
-        "Authorization": `Basic ${auth}`,
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      },
+    const url = `${apiBase()}${String(path).replace("/api/v2", "")}`;
+    const r = await fetch(url, {
+      headers: { "Content-Type": "application/json", ...basicAuthHeader() },
     });
-
-    // Pass through the status
-    const text = await upstream.text();
-    // Try to return JSON if possible
-    try {
-      const json = JSON.parse(text);
-      res.status(upstream.status).json(json);
-    } catch {
-      res.status(upstream.status).send(text);
-    }
+    const text = await r.text();
+    let body;
+    try { body = JSON.parse(text); } catch { return res.status(r.status).send(text); }
+    return res.status(r.status).json(body);
   } catch (e) {
-    console.error("zendesk proxy error:", e);
-    res.status(500).json({ error: "Proxy error" });
+    return res.status(500).json({ error: e.message || "Proxy error" });
   }
 }
