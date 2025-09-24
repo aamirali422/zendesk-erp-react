@@ -1,6 +1,4 @@
 // api/_utils/cookies.js
-
-// Serialize a cookie (very small, no deps)
 function serializeCookie(name, value, opts = {}) {
   const enc = encodeURIComponent;
   let cookie = `${name}=${enc(value)}`;
@@ -11,11 +9,22 @@ function serializeCookie(name, value, opts = {}) {
   if (opts.expires) cookie += `; Expires=${opts.expires.toUTCString()}`;
   if (opts.httpOnly) cookie += `; HttpOnly`;
   if (opts.secure) cookie += `; Secure`;
-  if (opts.sameSite) {
-    const v = typeof opts.sameSite === "string" ? opts.sameSite : "Lax";
-    cookie += `; SameSite=${v}`;
-  }
+  if (opts.sameSite) cookie += `; SameSite=${opts.sameSite || "Lax"}`;
   return cookie;
 }
 
-module.exports = { serializeCookie };
+function parseCookies(req) {
+  const h = req.headers.cookie || "";
+  const out = {};
+  h.split(";").forEach((p) => {
+    const idx = p.indexOf("=");
+    if (idx > -1) {
+      const k = p.slice(0, idx).trim();
+      const v = p.slice(idx + 1).trim();
+      out[k] = decodeURIComponent(v);
+    }
+  });
+  return out;
+}
+
+module.exports = { serializeCookie, parseCookies };

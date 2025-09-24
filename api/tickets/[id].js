@@ -1,40 +1,64 @@
 // api/tickets/[id].js
-import { requireSession, zdFetch } from "../../src/server-lib/zd.js";
+const { readSession, getZendeskAuthHeader } = require("../_utils/session");
 
-export default async function handler(req, res) {
-  let id = req.url.split("/api/tickets/")[1] || "";
-  id = id.split("?")[0];
-
+module.exports = async (req, res) => {
   try {
-    const session = requireSession(req);
+    const session = readSession(req);
+    if (!session) return res.status(401).json({ error: "Unauthorized" });
+
+    const { id } = req.query; // Vercel provides it for [id].js
+    const base = `https://${session.subdomain}.zendesk.com`;
+    const auth = getZendeskAuthHeader(session);
 
     if (req.method === "GET") {
-      // include sideloads: users, organizations
-      const data = await zdFetch(session, `/api/v2/tickets/${id}.json?include=users,organizations`);
-      res.setHeader("Content-Type", "application/json");
-      return res.end(JSON.stringify(data));
+      // ticket with side-loads
+      const r = await fetch(
+        `${base}/api/v2/tickets/${id}.json?include=users,organizations`,
+        { headers: { Authorization: auth, Accept: "application/json" } }
+      );
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        return res.status(r.status).json({ error: "Zendesk error", detail: t });
+      }
+      const data = await r.json();
+      return res.status(200).json(data);
     }
 
     if (req.method === "PUT") {
-      const chunks = [];
-      for await (const c of req) chunks.push(c);
-      const body = Buffer.concat(chunks).toString("utf8") || "{}";
-      const payload = JSON.parse(body);
-
-      const data = await zdFetch(session, `/api/v2/tickets/${id}.json`, {
-        method: "PUT",
-        body: JSON.stringify(payload),
-        headers: { "Content-Type": "application/json" }
+      // parse JSON
+      let body = "";
+      await new Promise((resolve) => {
+        req.on("data", (c) => (body += c));
+        req.on("end", resolve);
       });
+      let patch;
+      try {
+        patch = JSON.parse(body || "{}");
+      } catch {
+        return res.status(400).json({ error: "Invalid JSON body" });
+      }
 
-      res.setHeader("Content-Type", "application/json");
-      return res.end(JSON.stringify(data));
+      const r = await fetch(`${base}/api/v2/tickets/${id}.json`, {
+        method: "PUT",
+        headers: {
+          Authorization: auth,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) {
+        const t = await r.text().catch(() => "");
+        return res.status(r.status).json({ error: "Zendesk update failed", detail: t });
+      }
+      const data = await r.json();
+      return res.status(200).json(data);
     }
 
-    res.statusCode = 405;
-    res.end("Method Not Allowed");
-  } catch (err) {
-    res.statusCode = err.status || 500;
-    res.end(JSON.stringify({ error: err.message || "Ticket error" }));
+    res.setHeader("Allow", "GET, PUT");
+    return res.status(405).json({ error: "Method Not Allowed" });
+  } catch (e) {
+    console.error("TICKET [id] 500:", e);
+    return res.status(500).json({ error: "Ticket endpoint failed", detail: String(e?.message || e) });
   }
-}
+};

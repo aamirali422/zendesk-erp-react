@@ -1,8 +1,17 @@
 // api/logout.js
-import { clearSessionCookie } from "../src/server-lib/cookies.js";
+const { serializeCookie } = require("./_utils/cookies");
 
-export default async function handler(_req, res) {
-  clearSessionCookie(res);
-  res.setHeader("Content-Type", "application/json");
-  res.end(JSON.stringify({ ok: true }));
-}
+module.exports = async (req, res) => {
+  // clear cookie
+  res.setHeader(
+    "Set-Cookie",
+    serializeCookie("zd_session", "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+      path: "/",
+      maxAge: 0,
+    })
+  );
+  return res.status(200).json({ ok: true });
+};

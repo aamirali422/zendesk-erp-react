@@ -1,73 +1,49 @@
 // api/zendesk.js
-const { Buffer } = require("node:buffer");
+const { readSession, getZendeskAuthHeader } = require("./_utils/session");
 
-function readCookies(header = "") {
-  const out = {};
-  header.split(/;\s*/).filter(Boolean).forEach(kv => {
-    const idx = kv.indexOf("=");
-    if (idx > -1) out[decodeURIComponent(kv.slice(0, idx))] = decodeURIComponent(kv.slice(idx + 1));
-  });
-  return out;
-}
-
-function readSession(req) {
-  const cookies = readCookies(req.headers.cookie || "");
-  if (cookies.zd) {
-    try { return JSON.parse(cookies.zd); } catch { /* ignore */ }
-  }
-  // Fallback to env if cookie is missing (helps first-run testing on Vercel)
-  const email = process.env.ZENDESK_EMAIL;
-  const token = process.env.ZENDESK_TOKEN;
-  const subdomain = process.env.ZENDESK_SUBDOMAIN;
-  if (email && token && subdomain) return { email, token, subdomain };
-  return null;
-}
-
+/**
+ * GET /api/zendesk?path=/api/v2/...
+ */
 module.exports = async (req, res) => {
   try {
-    const sess = readSession(req);
-    if (!sess) {
-      return res.status(401).json({ error: "Unauthorized", detail: "No session and no env fallback." });
+    if (req.method !== "GET") {
+      res.setHeader("Allow", "GET");
+      return res.status(405).json({ error: "Method Not Allowed" });
     }
 
-    const raw = (req.query && req.query.path) || "";
-    const path = decodeURIComponent(raw);
-    if (!path || !path.startsWith("/api/v2")) {
-      return res.status(400).json({ error: "Invalid 'path' (must start with /api/v2)" });
+    const session = readSession(req);
+    if (!session) {
+      return res.status(401).json({ error: "Unauthorized: no session" });
     }
 
-    const zendeskUrl = `https://${sess.subdomain}.zendesk.com${path}`;
-    const basic = Buffer.from(`${sess.email}/token:${sess.token}`).toString("base64");
+    const path = String((req.query && req.query.path) || "").trim();
+    if (!path.startsWith("/api/v2")) {
+      return res.status(400).json({ error: "Bad Request: path must start with /api/v2" });
+    }
 
-    const upstream = await fetch(zendeskUrl, {
-      method: "GET",
+    const url = `https://${session.subdomain}.zendesk.com${path}`;
+    const r = await fetch(url, {
       headers: {
-        Authorization: `Basic ${basic}`,
+        Authorization: getZendeskAuthHeader(session),
         Accept: "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": "zendesk-erp-proxy"
-      }
+      },
     });
 
-    const text = await upstream.text();
-    if (!upstream.ok) {
-      // Try to return Zendesk's JSON error
-      try {
-        const j = JSON.parse(text || "{}");
-        return res.status(upstream.status).json(j);
-      } catch {
-        return res.status(upstream.status).json({
-          error: `Zendesk ${upstream.status}`,
-          detail: text || null,
-          url: path
-        });
-      }
+    if (r.status === 401 || r.status === 403) {
+      return res.status(401).json({ error: "Unauthorized to access Zendesk" });
+    }
+    if (r.status === 406) {
+      return res.status(406).json({ error: "Not Acceptable from Zendesk" });
+    }
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      return res.status(r.status).json({ error: `Zendesk error ${r.status}`, detail: txt });
     }
 
-    const data = text ? JSON.parse(text) : {};
+    const data = await r.json();
     return res.status(200).json(data);
-  } catch (err) {
-    console.error("api/zendesk crash:", err);
-    return res.status(500).json({ error: "Proxy error", detail: err?.message || String(err) });
+  } catch (e) {
+    console.error("ZENDESK 500:", e);
+    return res.status(500).json({ error: "Zendesk proxy failed", detail: String(e?.message || e) });
   }
 };
