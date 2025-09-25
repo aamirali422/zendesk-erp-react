@@ -1,21 +1,37 @@
-export const config = { runtime: "nodejs" };
-import { getSession } from "../../_session.js";
-import { zdFetch } from "../../_zd.js";
+// api/tickets/[id]/comments.js
+export const config = { api: { bodyParser: false } };
+
+import { Buffer } from "node:buffer";
+import { getSessionFromCookie } from "../../../src/server-lib/cookies.js";
+
+function zendeskBaseUrl(subdomain) {
+  return `https://${subdomain}.zendesk.com`;
+}
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") return res.status(405).end("Method Not Allowed");
-  const s = getSession(req);
-  if (!s) return res.status(401).json({ error: "Not authenticated" });
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ error: "Method Not Allowed" });
+  }
 
-  const id = req.query.id;
-  if (!id) return res.status(400).json({ error: "Missing id" });
+  const session = getSessionFromCookie(req);
+  if (!session?.email || !session?.token || !session?.subdomain) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
 
-  const include = req.query.include || "users";
-  const inline = req.query.inline === "true" ? "&include_inline_images=true" : "";
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: "Missing ticket id" });
+
+  const base = zendeskBaseUrl(session.subdomain);
+  const auth = Buffer.from(`${session.email}/token:${session.token}`).toString("base64");
+  const url = `${base}/api/v2/tickets/${encodeURIComponent(id)}/comments.json?include=users`;
+
   try {
-    const data = await zdFetch(s, `/api/v2/tickets/${id}/comments.json?include=${encodeURIComponent(include)}${inline}`);
-    res.status(200).json(data);
-  } catch (e) {
-    res.status(e.status || 500).json({ error: e.message, details: e.body });
+    const r = await fetch(url, { headers: { Authorization: `Basic ${auth}`, Accept: "application/json" } });
+    const t = await r.text();
+    if (!r.ok) return res.status(r.status).json({ error: t || `Zendesk ${r.status}` });
+    return res.status(200).send(t); // JSON string
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Comments handler failed" });
   }
 }
