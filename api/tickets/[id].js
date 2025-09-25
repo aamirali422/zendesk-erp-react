@@ -3,22 +3,16 @@ import { apiBase, basicAuthHeader } from "../../_utils/zendesk.js";
 
 export default async function handler(req, res) {
   const { id } = req.query;
-
-  if (!id) {
-    return res.status(400).json({ error: "Missing ticket id" });
-  }
+  if (!id) return res.status(400).json({ error: "Missing ticket id" });
 
   try {
     if (req.method === "GET") {
-      // side-load users & organizations
       const url = `${apiBase()}/tickets/${id}.json?include=users,organizations`;
       const r = await fetch(url, { headers: basicAuthHeader() });
+      const ct = r.headers.get("content-type") || "";
       const text = await r.text();
-
-      if (r.headers.get("content-type")?.includes("application/json")) {
-        return res.status(r.status).json(JSON.parse(text));
-      }
-      return res.status(r.status).send({ error: text });
+      if (ct.includes("application/json")) return res.status(r.status).json(JSON.parse(text));
+      return res.status(r.status).json({ error: text });
     }
 
     if (req.method === "PUT") {
@@ -28,12 +22,10 @@ export default async function handler(req, res) {
         headers: { "Content-Type": "application/json", ...basicAuthHeader() },
         body: JSON.stringify(req.body || {}),
       });
+      const ct = r.headers.get("content-type") || "";
       const text = await r.text();
-
-      if (r.headers.get("content-type")?.includes("application/json")) {
-        return res.status(r.status).json(JSON.parse(text));
-      }
-      return res.status(r.status).send({ error: text });
+      if (ct.includes("application/json")) return res.status(r.status).json(JSON.parse(text));
+      return res.status(r.status).json({ error: text });
     }
 
     return res.status(405).json({ error: "Method Not Allowed" });
