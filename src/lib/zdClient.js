@@ -3,7 +3,6 @@ import { apiUrl } from "@/lib/apiBase";
 
 /**
  * Read the response body exactly once.
- * - Always read as text first, then decide JSON vs error.
  */
 async function readOnce(res, { parseJson = true } = {}) {
   const text = await res.text().catch(() => "");
@@ -25,15 +24,14 @@ async function readOnce(res, { parseJson = true } = {}) {
     }
   }
 
-  // Non-JSON success:
   if (!text) return {};
   throw new Error("Expected JSON but received non-JSON response.");
 }
 
-/**
- * Core fetch helper for your app API.
- */
-async function request(path, { method = "GET", headers = {}, body, credentials = "include", parseJson = true } = {}) {
+async function request(
+  path,
+  { method = "GET", headers = {}, body, credentials = "include", parseJson = true } = {}
+) {
   const res = await fetch(apiUrl(path), {
     method,
     headers,
@@ -61,10 +59,7 @@ export async function logout() {
   return request("/api/logout", { method: "POST" });
 }
 
-/* ========= ZENDESK (via /api/zendesk proxy) =========
-   We avoid /api/tickets/... pages that may not exist on Vercel,
-   and go through the known-good proxy you already deployed.
-*/
+/* ========= ZENDESK PROXY ========= */
 
 export async function getTicket(id) {
   const path = `/api/zendesk?path=${encodeURIComponent(
@@ -91,22 +86,15 @@ export async function updateTicket(id, ticketPatch) {
   });
 }
 
-/**
- * POST a new comment (public or internal) with optional attachments.
- *
- * For attachments, you need a server endpoint that:
- *  1) uploads each file to Zendesk Uploads API to get tokens,
- *  2) PUTs the ticket with the comment+tokens.
- *
- * If you already have /api/tickets/:id/comment working locally via Express,
- * mirror that as a Vercel Function at /api/tickets/[id]/comment.js.
- *
- * Below we keep the client code calling that route.
- */
 export async function postComment({ id, body, html_body, isPublic = true, files = [] }) {
   const fd = new FormData();
-  // Ensure Zendesk receives a non-empty body
   fd.append("body", (body || "").trim() || "Attachment(s) uploaded.");
   fd.append("isPublic", String(!!isPublic));
   if (html_body) fd.append("html_body", html_body);
-  for (const f of files) fd.append("files
+  for (const f of files) fd.append("files", f);
+
+  return request(`/api/tickets/${encodeURIComponent(id)}/comment`, {
+    method: "POST",
+    body: fd,
+  });
+}
