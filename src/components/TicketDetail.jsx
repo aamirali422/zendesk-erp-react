@@ -35,8 +35,8 @@ export default function TicketDetail({ ticket, onBack }) {
   const [commentUsers, setCommentUsers] = useState([]);
   const [organizations, setOrganizations] = useState([]);
 
-  // header form state (ID fields are editable; pretty labels are read-only)
-  const [requester, setRequester] = useState(""); // can be numeric ID or email
+  // header form state (IDs are editable; pretty labels are read-only)
+  const [requester, setRequester] = useState(""); // numeric ID or email
   const [assignee, setAssignee] = useState("");   // numeric ID only
   const [type, setType] = useState(TYPE_OPTIONS[0]);
   const [priority, setPriority] = useState("Normal");
@@ -61,8 +61,10 @@ export default function TicketDetail({ ticket, onBack }) {
     return map;
   }, [organizations]);
 
-  const requesterUser = requester && isNumericId(String(requester)) ? userMap.get(Number(requester)) : null;
-  const assigneeUser  = assignee && isNumericId(String(assignee))   ? userMap.get(Number(assignee))   : null;
+  const requesterUser =
+    requester && isNumericId(String(requester)) ? userMap.get(Number(requester)) : null;
+  const assigneeUser =
+    assignee && isNumericId(String(assignee)) ? userMap.get(Number(assignee)) : null;
   const org = zdTicket?.organization_id ? orgMap.get(zdTicket.organization_id) : null;
 
   const displayUser = (id) => {
@@ -88,11 +90,14 @@ export default function TicketDetail({ ticket, onBack }) {
         setOrganizations(t.organizations || []);
         setCommentUsers(c.users || []);
 
-        // initialize the editable state from live ticket
+        // initialize editable state from live ticket
         setRequester(t.ticket.requester_id ? String(t.ticket.requester_id) : "");
         setAssignee(t.ticket.assignee_id ? String(t.ticket.assignee_id) : "");
         setType(t.ticket.type || TYPE_OPTIONS[0]);
-        setPriority((t.ticket.priority?.[0]?.toUpperCase() || "N") + (t.ticket.priority?.slice(1) || "ormal")); // normalize to "Normal" casing
+        // normalize casing, e.g., "normal" -> "Normal"
+        setPriority(
+          t.ticket.priority ? t.ticket.priority[0].toUpperCase() + t.ticket.priority.slice(1) : "Normal"
+        );
         setStatus(t.ticket.status || "open");
         setTags(t.ticket.tags || []);
       } catch (e) {
@@ -104,7 +109,7 @@ export default function TicketDetail({ ticket, onBack }) {
     })();
   }, [ticket?.id]);
 
-  // auto-scroll to bottom when comments change (after load or send)
+  // auto-scroll to bottom when comments change
   useEffect(() => {
     const el = commentsScrollRef.current;
     if (!el) return;
@@ -146,21 +151,20 @@ export default function TicketDetail({ ticket, onBack }) {
       if (!requester) return toast("Requester is required (ID or email).");
 
       const patch = {
-        // common fields
         type: typeToApi(type),
         priority: toLowerOrNull(priority),
         status,
         tags: Array.from(new Set(tags.map((t) => t.trim()).filter(Boolean))),
       };
 
-      // Requester: support numeric ID or email
+      // Requester: allow numeric ID or email
       if (isNumericId(String(requester))) {
         patch.requester_id = Number(requester);
       } else if (looksLikeEmail(String(requester))) {
         patch.requester = { email: String(requester).trim() };
-      } // else omit: keeps current value
+      }
 
-      // Assignee: numeric ID only (omit if not numeric to avoid 422)
+      // Assignee: numeric ID only
       if (assignee && isNumericId(String(assignee))) {
         patch.assignee_id = Number(assignee);
       }
@@ -181,7 +185,7 @@ export default function TicketDetail({ ticket, onBack }) {
 
       const trimmed = (message || "").trim();
       const hasFiles = attachments.length > 0;
-      const safeBody = trimmed || (hasFiles ? "Attachment(s) uploaded." : ""); // fallback body
+      const safeBody = trimmed || (hasFiles ? "Attachment(s) uploaded." : "");
 
       if (!safeBody) {
         return toast("Type a message or attach at least one file.");
@@ -200,7 +204,6 @@ export default function TicketDetail({ ticket, onBack }) {
       setMessage("");
       setAttachments([]);
 
-      // ensure we scroll to bottom after new comment arrives
       requestAnimationFrame(() => {
         const el = commentsScrollRef.current;
         if (el) el.scrollTop = el.scrollHeight;
@@ -238,15 +241,19 @@ export default function TicketDetail({ ticket, onBack }) {
   const erp = getMockErpFromTicket(ticket);
 
   // Pretty labels (from live ticket/user maps) for read-only display
-  const prettyRequester =
-    requesterUser
-      ? `${requesterUser.name || ""} (${requesterUser.email || ""})`
-      : (looksLikeEmail(requester) ? requester : (zdTicket?.requester_id ? `Requester #${zdTicket.requester_id}` : "—"));
+  const prettyRequester = requesterUser
+    ? `${requesterUser.name || ""} (${requesterUser.email || ""})`
+    : looksLikeEmail(requester)
+    ? requester
+    : zdTicket?.requester_id
+    ? `Requester #${zdTicket.requester_id}`
+    : "—";
 
-  const prettyAssignee =
-    assigneeUser
-      ? `${assigneeUser.name || ""}`
-      : (zdTicket?.assignee_id ? `Agent #${zdTicket.assignee_id}` : "Unassigned");
+  const prettyAssignee = assigneeUser
+    ? `${assigneeUser.name || ""}`
+    : zdTicket?.assignee_id
+    ? `Agent #${zdTicket.assignee_id}`
+    : "Unassigned";
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
@@ -410,7 +417,6 @@ export default function TicketDetail({ ticket, onBack }) {
 
         {/* Conversation (comments scrollable, composer fixed) */}
         <div className="rounded-2xl border border-gray-200 bg-white flex flex-col max-h-[70vh]">
-          {/* Scrollable comments area */}
           <div
             ref={commentsScrollRef}
             className="p-4 space-y-3 flex-1 overflow-y-auto"
@@ -447,7 +453,7 @@ export default function TicketDetail({ ticket, onBack }) {
             )}
           </div>
 
-          {/* Composer (fixed at bottom of the card) */}
+          {/* Composer */}
           <div className="p-4 border-t shrink-0 space-y-3">
             {!canComment && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -592,3 +598,13 @@ function getMockErpFromTicket(ticket) {
     },
     items: [
       { sku: "X123", name: "CFexpress™ v4 Type A", qty: (n % 3) + 1 },
+      { sku: "Y456", name: "Card Reader CFast 2.0", qty: 1 },
+    ],
+    totals: { subtotal: "€199.00", shipping: "€10.00", total: "€209.00" },
+    shipments:
+      status === "Shipped"
+        ? [{ id: `SHP-${2100 + (n % 90)}`, carrier: "DHL", tracking: "DHL123456789", eta: "3–5 days" }]
+        : [],
+    invoices: [{ id: `INV-${3100 + (n % 120)}`, amount: "€209.00" }],
+  };
+}
