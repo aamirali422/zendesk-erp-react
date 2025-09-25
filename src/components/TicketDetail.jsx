@@ -10,6 +10,8 @@ const STATUS_OPTIONS = ["new", "open", "pending", "on_hold", "solved", "closed"]
 // utils
 const toLowerOrNull = (v) => (v && typeof v === "string" ? v.toLowerCase() : null);
 const typeToApi = (v) => (v === "-" ? null : toLowerOrNull(v));
+const isNumericId = (v) => typeof v === "string" && /^[0-9]+$/.test(v);
+const looksLikeEmail = (v) => typeof v === "string" && /\S+@\S+\.\S+/.test(v);
 function toast(msg) {
   alert(msg);
 }
@@ -33,9 +35,9 @@ export default function TicketDetail({ ticket, onBack }) {
   const [commentUsers, setCommentUsers] = useState([]);
   const [organizations, setOrganizations] = useState([]);
 
-  // header form state
-  const [requester, setRequester] = useState("");
-  const [assignee, setAssignee] = useState("");
+  // header form state (ID fields are editable; pretty labels are read-only)
+  const [requester, setRequester] = useState(""); // can be numeric ID or email
+  const [assignee, setAssignee] = useState("");   // numeric ID only
   const [type, setType] = useState(TYPE_OPTIONS[0]);
   const [priority, setPriority] = useState("Normal");
   const [status, setStatus] = useState("open");
@@ -59,8 +61,8 @@ export default function TicketDetail({ ticket, onBack }) {
     return map;
   }, [organizations]);
 
-  const requesterUser = requester ? userMap.get(requester) : null;
-  const assigneeUser = assignee ? userMap.get(assignee) : null;
+  const requesterUser = requester && isNumericId(String(requester)) ? userMap.get(Number(requester)) : null;
+  const assigneeUser  = assignee && isNumericId(String(assignee))   ? userMap.get(Number(assignee))   : null;
   const org = zdTicket?.organization_id ? orgMap.get(zdTicket.organization_id) : null;
 
   const displayUser = (id) => {
@@ -86,10 +88,11 @@ export default function TicketDetail({ ticket, onBack }) {
         setOrganizations(t.organizations || []);
         setCommentUsers(c.users || []);
 
-        setRequester(t.ticket.requester_id || "");
-        setAssignee(t.ticket.assignee_id || "");
+        // initialize the editable state from live ticket
+        setRequester(t.ticket.requester_id ? String(t.ticket.requester_id) : "");
+        setAssignee(t.ticket.assignee_id ? String(t.ticket.assignee_id) : "");
         setType(t.ticket.type || TYPE_OPTIONS[0]);
-        setPriority(t.ticket.priority || "Normal");
+        setPriority((t.ticket.priority?.[0]?.toUpperCase() || "N") + (t.ticket.priority?.slice(1) || "ormal")); // normalize to "Normal" casing
         setStatus(t.ticket.status || "open");
         setTags(t.ticket.tags || []);
       } catch (e) {
@@ -140,16 +143,27 @@ export default function TicketDetail({ ticket, onBack }) {
   // save header
   const onSaveHeader = async () => {
     try {
-      if (!requester) return toast("Requester is required (ID).");
+      if (!requester) return toast("Requester is required (ID or email).");
 
       const patch = {
-        requester_id: requester || null,
-        assignee_id: assignee || null,
+        // common fields
         type: typeToApi(type),
         priority: toLowerOrNull(priority),
         status,
         tags: Array.from(new Set(tags.map((t) => t.trim()).filter(Boolean))),
       };
+
+      // Requester: support numeric ID or email
+      if (isNumericId(String(requester))) {
+        patch.requester_id = Number(requester);
+      } else if (looksLikeEmail(String(requester))) {
+        patch.requester = { email: String(requester).trim() };
+      } // else omit: keeps current value
+
+      // Assignee: numeric ID only (omit if not numeric to avoid 422)
+      if (assignee && isNumericId(String(assignee))) {
+        patch.assignee_id = Number(assignee);
+      }
 
       await updateTicket(ticket.id, patch);
       toast("Ticket fields saved.");
@@ -223,6 +237,17 @@ export default function TicketDetail({ ticket, onBack }) {
 
   const erp = getMockErpFromTicket(ticket);
 
+  // Pretty labels (from live ticket/user maps) for read-only display
+  const prettyRequester =
+    requesterUser
+      ? `${requesterUser.name || ""} (${requesterUser.email || ""})`
+      : (looksLikeEmail(requester) ? requester : (zdTicket?.requester_id ? `Requester #${zdTicket.requester_id}` : "—"));
+
+  const prettyAssignee =
+    assigneeUser
+      ? `${assigneeUser.name || ""}`
+      : (zdTicket?.assignee_id ? `Agent #${zdTicket.assignee_id}` : "Unassigned");
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
       {/* LEFT: Header + Conversation */}
@@ -238,7 +263,6 @@ export default function TicketDetail({ ticket, onBack }) {
                 ← Back to Tickets
               </button>
               <h3 className="text-lg font-semibold">
-                {/* prefer live subject if present */}
                 Ticket #{ticket.id} — {zdTicket?.subject ?? ticket.subject}
               </h3>
             </div>
@@ -256,15 +280,20 @@ export default function TicketDetail({ ticket, onBack }) {
               <label className="mb-1 block text-sm font-medium text-gray-700">Requester</label>
               <input
                 type="text"
-                value={
-                  requesterUser
-                    ? `${requesterUser.name || ""} (${requesterUser.email || ""})`
-                    : requester
-                }
-                onChange={(e) => setRequester(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
+                value={prettyRequester}
+                readOnly
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
               />
-              <p className="mt-1 text-xs text-gray-500">ID: {requester || "—"}</p>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-xs text-gray-500">Requester ID or Email:</span>
+                <input
+                  type="text"
+                  value={requester}
+                  onChange={(e) => setRequester(e.target.value)}
+                  className="w-56 rounded-lg border border-gray-300 px-2 py-1 text-xs"
+                  placeholder="e.g. 39068623905169 or user@x.com"
+                />
+              </div>
             </div>
 
             {/* Assignee */}
@@ -272,11 +301,20 @@ export default function TicketDetail({ ticket, onBack }) {
               <label className="mb-1 block text-sm font-medium text-gray-700">Assignee</label>
               <input
                 type="text"
-                value={assigneeUser ? `${assigneeUser.name || ""}` : assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200"
+                value={prettyAssignee}
+                readOnly
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm"
               />
-              <p className="mt-1 text-xs text-gray-500">ID: {assignee || "—"}</p>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-xs text-gray-500">Assignee ID:</span>
+                <input
+                  type="text"
+                  value={assignee}
+                  onChange={(e) => setAssignee(e.target.value)}
+                  className="w-40 rounded-lg border border-gray-300 px-2 py-1 text-xs"
+                  placeholder="e.g. 39068292522641"
+                />
+              </div>
             </div>
 
             {/* Tags */}
@@ -531,7 +569,7 @@ export default function TicketDetail({ ticket, onBack }) {
         </div>
       </section>
 
-      {/* RIGHT: ERP (unchanged for now) */}
+      {/* RIGHT: ERP */}
       <section className="md:col-span-1">
         <ERPPanel erp={erp} />
       </section>
@@ -539,7 +577,7 @@ export default function TicketDetail({ ticket, onBack }) {
   );
 }
 
-/** Demo ERP data (unchanged) */
+/** Demo ERP data */
 function getMockErpFromTicket(ticket) {
   const n = Number(String(ticket.id).slice(-2));
   const statusPool = ["Processing", "Pending", "Shipped"];
@@ -554,10 +592,3 @@ function getMockErpFromTicket(ticket) {
     },
     items: [
       { sku: "X123", name: "CFexpress™ v4 Type A", qty: (n % 3) + 1 },
-      { sku: "Y456", name: "Card Reader CFast 2.0", qty: 1 },
-    ],
-    totals: { subtotal: "€199.00", shipping: "€10.00", total: "€209.00" },
-    shipments: status === "Shipped" ? [{ id: `SHP-${2100 + (n % 90)}`, carrier: "DHL", tracking: "DHL123456789", eta: "3–5 days" }] : [],
-    invoices: [{ id: `INV-${3100 + (n % 120)}`, amount: "€209.00" }],
-  };
-}
