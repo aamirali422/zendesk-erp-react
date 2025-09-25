@@ -1,10 +1,22 @@
 // src/server-lib/cookies.js
 const COOKIE_NAME = "zd";
 
+function buildCookieString(name, value, { maxAge, secure = true } = {}) {
+  const parts = [
+    `${name}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
+  if (secure) parts.push("Secure");
+  if (typeof maxAge === "number") parts.push(`Max-Age=${maxAge}`);
+  return parts.join("; ");
+}
+
 export function parseCookies(req) {
   const header = req.headers.cookie || "";
   return header.split(";").reduce((acc, part) => {
-    const [k, v] = part.split("=").map(s => s && s.trim());
+    const [k, v] = part.split("=").map((s) => s && s.trim());
     if (!k) return acc;
     acc[k] = decodeURIComponent(v || "");
     return acc;
@@ -25,26 +37,16 @@ export function getSessionFromCookie(req) {
 export function setSessionCookie(res, session, { maxDays = 30 } = {}) {
   const value = Buffer.from(JSON.stringify(session), "utf8").toString("base64url");
   const maxAge = maxDays * 24 * 3600;
-  const cookie = [
-    `${COOKIE_NAME}=${encodeURIComponent(value)}`,
-    `Path=/`,
-    `HttpOnly`,
-    `SameSite=Lax`,
-    // NOTE: set Secure only when on HTTPS (Vercel prod is HTTPS)
-    `Secure`,
-    `Max-Age=${maxAge}`
-  ].join("; ");
+
+  // Only secure in production (Vercel); not on localhost http
+  const isProd = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+  const cookie = buildCookieString(COOKIE_NAME, value, { maxAge, secure: isProd });
+
   res.setHeader("Set-Cookie", cookie);
 }
 
 export function clearSessionCookie(res) {
-  const cookie = [
-    `${COOKIE_NAME}=`,
-    `Path=/`,
-    `HttpOnly`,
-    `SameSite=Lax`,
-    `Secure`,
-    `Max-Age=0`
-  ].join("; ");
+  const isProd = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+  const cookie = buildCookieString(COOKIE_NAME, "", { maxAge: 0, secure: isProd });
   res.setHeader("Set-Cookie", cookie);
 }

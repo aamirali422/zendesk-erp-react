@@ -1,26 +1,17 @@
-// api/login.js
+import { doLogin } from "../src/server-lib/zd.js";
+import { setSessionCookie } from "../src/server-lib/cookies.js";
+
 export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method Not Allowed" });
-    }
-
-    // Normally you would verify Zendesk credentials here.
-    // For now, we just set a dummy cookie so the frontend knows you're "logged in".
-    const { email } = req.body || {};
-
-    res.setHeader(
-      "Set-Cookie",
-      "sid=ok; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400"
-    );
-
-    return res.json({
-      ok: true,
-      subdomain: process.env.ZENDESK_SUBDOMAIN || "",
-      user: { email: email || "agent@example.com" },
-    });
+    const session = await doLogin(req, res); // validates presence of email/token/subdomain
+    setSessionCookie(res, session, { maxDays: 30 /* production will be Secure */ });
+    res.status(200).json({ ok: true, user: { email: session.email }, subdomain: session.subdomain });
   } catch (e) {
-    console.error("Login error:", e);
-    return res.status(500).json({ error: e.message || "Login failed" });
+    res.status(400).json({ error: e.message || "Login failed" });
   }
 }
