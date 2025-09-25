@@ -45,8 +45,3 @@
     "vite": "^7.1.2"
   }
 }
-{
-  "dependencies": {
-    "busboy": "^1.6.0"
-  }
-}
