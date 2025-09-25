@@ -1,19 +1,19 @@
-import { requireSession, proxyZendesk } from "../src/server-lib/zd.js";
+export const config = { runtime: "nodejs" };
+import { getSession } from "./_session.js";
+import { zdFetch } from "./_zd.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error: "Not authenticated" });
+
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const path = url.searchParams.get("path");
+  if (!path) return res.status(400).json({ error: "Missing ?path" });
+
   try {
-    const session = requireSession(req);
-    const { path } = req.query;
-    if (!path || typeof path !== "string" || !path.startsWith("/api/v2")) {
-      res.status(400).json({ error: "Query param `path` must start with /api/v2" });
-      return;
-    }
-    await proxyZendesk(req, res, session, path);
+    const data = await zdFetch(s, path);
+    res.status(200).json(data);
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message || "Proxy error" });
+    res.status(e.status || 500).json({ error: e.message, details: e.body });
   }
 }

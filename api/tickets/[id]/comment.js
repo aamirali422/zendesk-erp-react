@@ -1,101 +1,89 @@
-// /api/tickets/[id]/comment.js
+export const config = { runtime: "nodejs" };
 import Busboy from "busboy";
-import { getSessionFromCookie } from "../../src/server-lib/cookies.js";
-import { zendeskBaseUrl } from "../../src/server-lib/zd.js";
+import { getSession } from "../../_session.js";
+import { baseUrl, authHeader } from "../../_zd.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.statusCode = 405;
-    return res.end("Method Not Allowed");
-  }
+  if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error: "Not authenticated" });
 
-  // Get session (email/token/subdomain) from cookie
-  const session = getSessionFromCookie(req);
-  if (!session) {
-    res.statusCode = 401;
-    return res.end(JSON.stringify({ error: "Not authenticated" }));
-  }
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "Missing id" });
 
-  const id = req.url.split("/api/tickets/")[1].split("/comment")[0];
+  // Parse multipart form-data via Busboy
+  const { fields, files } = await parseMultipart(req);
 
-  // Parse multipart with Busboy
-  const busboy = Busboy({ headers: req.headers });
-  const fields = {};
-  const files = []; // { filename, mime, buffer }
+  const isPublic = String(fields.isPublic) === "true";
+  const bodyText = (fields.html_body ? "" : (fields.body || "")).trim();
+  const htmlBody = fields.html_body || null;
 
-  busboy.on("file", (_name, file, info) => {
-    const { filename, mimeType } = info;
-    const chunks = [];
-    file.on("data", (d) => chunks.push(d));
-    file.on("end", () => {
-      files.push({ filename, mime: mimeType, buffer: Buffer.concat(chunks) });
+  // Upload attachments to Zendesk to get tokens
+  const tokens = [];
+  for (const f of files) {
+    const upRes = await fetch(`${baseUrl(s.subdomain)}/api/v2/uploads.json?filename=${encodeURIComponent(f.filename)}`, {
+      method: "POST",
+      headers: {
+        ...authHeader(s),
+        "Content-Type": f.mimetype || "application/octet-stream",
+      },
+      body: f.buffer,
     });
-  });
-
-  busboy.on("field", (name, val) => {
-    fields[name] = val;
-  });
-
-  busboy.on("finish", async () => {
-    try {
-      const base = zendeskBaseUrl(session.subdomain);
-      const auth = "Basic " + Buffer.from(`${session.email}/token:${session.token}`).toString("base64");
-
-      // 1) Upload each file to Zendesk Uploads API to collect tokens
-      const uploads = [];
-      for (const f of files) {
-        const up = await fetch(`${base}/api/v2/uploads.json?filename=${encodeURIComponent(f.filename)}`, {
-          method: "POST",
-          headers: {
-            Authorization: auth,
-            "Content-Type": f.mime || "application/octet-stream",
-          },
-          body: f.buffer,
-        });
-        const upText = await up.text();
-        if (!up.ok) {
-          res.statusCode = up.status;
-          return res.end(JSON.stringify({ error: "Upload failed", details: upText }));
-        }
-        const upJson = JSON.parse(upText || "{}");
-        uploads.push(upJson?.upload?.token);
-      }
-
-      // 2) Build the comment payload
-      const body = (fields.body || "").trim() || "Attachment(s) uploaded.";
-      const isPublic = String(fields.isPublic) === "true";
-      const payload = {
-        ticket: {
-          comment: {
-            ...(fields.html_body ? { html_body: fields.html_body } : { body }),
-            public: isPublic,
-            ...(uploads.length ? { uploads } : {}),
-          },
-        },
-      };
-
-      // 3) PUT ticket update
-      const put = await fetch(`${base}/api/v2/tickets/${encodeURIComponent(id)}.json`, {
-        method: "PUT",
-        headers: {
-          Authorization: auth,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      const putText = await put.text();
-      if (!put.ok) {
-        res.statusCode = put.status;
-        return res.end(JSON.stringify({ error: "Ticket update failed", details: putText }));
-      }
-
-      res.setHeader("Content-Type", "application/json");
-      return res.end(putText || "{}");
-    } catch (err) {
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ error: err?.message || "Server error" }));
+    const upText = await upRes.text();
+    if (!upRes.ok) {
+      return res.status(upRes.status).json({ error: "Upload failed", details: safeJson(upText) });
     }
-  });
+    const upJson = safeJson(upText);
+    tokens.push(upJson?.upload?.token);
+  }
 
-  req.pipe(busboy);
+  // Construct payload; Zendesk requires non-empty body for comment
+  const comment = {
+    ...(htmlBody ? { html_body: htmlBody } : { body: bodyText || (tokens.length ? "Attachment(s) uploaded." : "") }),
+    public: isPublic,
+    ...(tokens.length ? { uploads: tokens } : {})
+  };
+
+  try {
+    const putRes = await fetch(`${baseUrl(s.subdomain)}/api/v2/tickets/${id}.json`, {
+      method: "PUT",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...authHeader(s),
+      },
+      body: JSON.stringify({ ticket: { comment } }),
+    });
+    const putText = await putRes.text();
+    if (!putRes.ok) {
+      return res.status(putRes.status).json({ error: "Comment failed", details: safeJson(putText) });
+    }
+    const json = safeJson(putText) || {};
+    res.status(200).json(json);
+  } catch (e) {
+    res.status(500).json({ error: e.message || "Comment failed" });
+  }
+}
+
+/** Helpers */
+function safeJson(txt) { try { return JSON.parse(txt); } catch { return { raw: txt }; } }
+
+function parseMultipart(req) {
+  return new Promise((resolve, reject) => {
+    const busboy = Busboy({ headers: req.headers });
+    const fields = {};
+    const files = [];
+    busboy.on("file", (name, file, info) => {
+      const { filename, mimeType } = info;
+      const chunks = [];
+      file.on("data", (d) => chunks.push(d));
+      file.on("end", () => {
+        files.push({ fieldname: name, filename, mimetype: mimeType, buffer: Buffer.concat(chunks) });
+      });
+    });
+    busboy.on("field", (name, val) => { fields[name] = val; });
+    busboy.on("error", reject);
+    busboy.on("finish", () => resolve({ fields, files }));
+    req.pipe(busboy);
+  });
 }

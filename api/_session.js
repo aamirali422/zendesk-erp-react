@@ -1,65 +1,55 @@
-// api/_session.js
 export const config = { runtime: "nodejs" };
 
+const COOKIE_NAME = "zd";
 
-import { createHash } from "node:crypto";
-
-const COOKIE_NAME = "zd_sid";
-
-// tiny in-memory session store (serverless note: per instance)
-const sessions = new Map();
-
-export function authHeader(email, apiToken) {
-  const b64 = Buffer.from(`${email}/token:${apiToken}`).toString("base64");
-  return `Basic ${b64}`;
+function b64urlEncode(obj) {
+  return Buffer.from(JSON.stringify(obj), "utf8").toString("base64url");
+}
+function b64urlDecode(str) {
+  try { return JSON.parse(Buffer.from(str, "base64url").toString("utf8")); }
+  catch { return null; }
 }
 
-export function setSessionCookie(req, res, { email, apiToken, subdomain }) {
-  // stable-ish id for demo; you can swap to uuid
-  const sid = createHash("sha256")
-    .update(`${email}:${subdomain}:${Date.now()}:${Math.random()}`)
-    .digest("hex");
-
-  sessions.set(sid, { email, apiToken, subdomain });
-
-  res.setHeader("Set-Cookie", [
-    `${COOKIE_NAME}=${sid}; Path=/; HttpOnly; SameSite=Lax; ${
-      process.env.NODE_ENV === "production" ? "Secure; " : ""
-    }Max-Age=28800`,
-  ]);
+export function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  return header.split(";").reduce((acc, part) => {
+    const [k, v] = part.split("=").map(s => s && s.trim());
+    if (!k) return acc;
+    acc[k] = decodeURIComponent(v || "");
+    return acc;
+  }, {});
 }
 
-export function readSession(req, res) {
-  const cookie = req.headers.cookie || "";
-  const sid = cookie
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith(`${COOKIE_NAME}=`))
-    ?.split("=")[1];
-
-  if (!sid || !sessions.has(sid)) {
-    res.statusCode = 401;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ ok: false, error: "Not authenticated" }));
-    return null;
-  }
-  return { sid, ...sessions.get(sid) };
+export function getSession(req) {
+  const raw = parseCookies(req)[COOKIE_NAME];
+  if (!raw) return null;
+  const s = b64urlDecode(raw);
+  if (!s || !s.email || !s.token || !s.subdomain) return null;
+  return s;
 }
 
-export function clearSession(req, res) {
-  const cookie = req.headers.cookie || "";
-  const sid = cookie
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith(`${COOKIE_NAME}=`))
-    ?.split("=")[1];
+export function setSession(res, session, { maxDays = 30 } = {}) {
+  const value = b64urlEncode(session);
+  const maxAge = maxDays * 24 * 3600;
+  const cookie = [
+    `${COOKIE_NAME}=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Secure",
+    `Max-Age=${maxAge}`
+  ].join("; ");
+  res.setHeader("Set-Cookie", cookie);
+}
 
-  if (sid) sessions.delete(sid);
-
-  res.setHeader(
-    "Set-Cookie",
-    `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; ${
-      process.env.NODE_ENV === "production" ? "Secure; " : ""
-    }Max-Age=0`
-  );
+export function clearSession(res) {
+  const cookie = [
+    `${COOKIE_NAME}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Secure",
+    "Max-Age=0"
+  ].join("; ");
+  res.setHeader("Set-Cookie", cookie);
 }

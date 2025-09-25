@@ -1,20 +1,21 @@
-// api/tickets/[id]/comments.js
-import { apiBase, basicAuthHeader } from "../../../_utils/zendesk.js";
+export const config = { runtime: "nodejs" };
+import { getSession } from "../../_session.js";
+import { zdFetch } from "../../_zd.js";
 
 export default async function handler(req, res) {
-  const { id } = req.query;
-  if (!id) return res.status(400).json({ error: "Missing ticket id" });
-  if (req.method !== "GET") return res.status(405).json({ error: "Method Not Allowed" });
+  if (req.method !== "GET") return res.status(405).end("Method Not Allowed");
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error: "Not authenticated" });
 
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "Missing id" });
+
+  const include = req.query.include || "users";
+  const inline = req.query.inline === "true" ? "&include_inline_images=true" : "";
   try {
-    const url = `${apiBase()}/tickets/${id}/comments.json?include=users`;
-    const r = await fetch(url, { headers: basicAuthHeader() });
-    const ct = r.headers.get("content-type") || "";
-    const text = await r.text();
-    if (ct.includes("application/json")) return res.status(r.status).json(JSON.parse(text));
-    return res.status(r.status).json({ error: text });
+    const data = await zdFetch(s, `/api/v2/tickets/${id}/comments.json?include=${encodeURIComponent(include)}${inline}`);
+    res.status(200).json(data);
   } catch (e) {
-    console.error("Comments API error:", e);
-    return res.status(500).json({ error: e.message || "Comments API error" });
+    res.status(e.status || 500).json({ error: e.message, details: e.body });
   }
 }

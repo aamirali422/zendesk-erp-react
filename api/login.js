@@ -1,17 +1,15 @@
-import { doLogin } from "../src/server-lib/zd.js";
-import { setSessionCookie } from "../src/server-lib/cookies.js";
+export const config = { runtime: "nodejs" };
+import { setSession } from "./_session.js";
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
+  if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const { email, token, subdomain } = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 
-  try {
-    const session = await doLogin(req, res); // validates presence of email/token/subdomain
-    setSessionCookie(res, session, { maxDays: 30 /* production will be Secure */ });
-    res.status(200).json({ ok: true, user: { email: session.email }, subdomain: session.subdomain });
-  } catch (e) {
-    res.status(400).json({ error: e.message || "Login failed" });
+  if (!email || !token || !subdomain) {
+    return res.status(400).json({ error: "email, token, subdomain required" });
   }
+  setSession(res, { email, token, subdomain });
+  res.status(200).json({ user: { email }, subdomain });
 }
